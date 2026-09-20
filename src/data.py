@@ -1,34 +1,83 @@
 import fastf1
+import fastf1.plotting
 import pandas as pd
-import os
-import streamlit as st
-from fastf1.exceptions import DataNotLoadedError
+
+
+from pathlib import Path
 
 fastf1.set_log_level('WARNING')
 
-#Cache configuration
-if not os.path.exists('cache'):
-    os.makedirs('cache')
-fastf1.Cache.enable_cache('cache')
+DATA_DIR = Path("data/laps")
+CACHE_DIR = Path("cache")
+DEFAULT_COLOR = "gray"
 
-@st.cache_data(show_spinner=False)
-def load_laps(year: int, gp: str, session_type: str):
-    #loading info session but telemetry, weather or messages are false to have a faster download
-    session = fastf1.get_session(year, gp, session_type)
-    session.load(telemetry = False, weather = False, messages = False)
-    try: 
-        return session.laps
-    except DataNotLoadedError: 
-        raise RuntimeError('Download Failed')
+COLUMNS = [
+    "Driver", "DriverNumber", "Team", "LapNumber", "LapTime", "Stint",
+    "Compound", "TyreLife", "PitInTime", "PitOutTime",
+    "Sector1Time", "Sector2Time", "Sector3Time", "TrackStatus", "Deleted",
+]
+
+SESSION_CODES = {
+    "Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3",
+    "Qualifying": "Q", "Sprint Qualifying": "SQ", "Sprint Shootout": "SS",
+    "Sprint": "S", "Race": "R",
+}
+SESSION_LABELS = {code: name for name, code in SESSION_CODES.items()}
+RACE_LIKE = {"R", "S"} 
+
+def enable_cache():
+    CACHE_DIR.mkdir(exist_ok= True)
+    fastf1.Cache.enable_cache(str(CACHE_DIR))
+
+def laps_path(year: int, rnd: int, code: str) -> Path: 
+    return DATA_DIR / f"{year}_{rnd:02d}_{code}.parquet"
+
+def event_sessions(event) ->list:
+    ###session codes of a schedule row
+    codes = []
+    for i in range(1,6):
+        code = SESSION_CODES.get(event.get(f"Session{i}"))
+        if code:
+            codes.append(code)
+    return codes
+
+
+
+def download_laps(year: int, rnd: int, code: str) -> pd.DataFrame:
+    """Download one session and save its laps as parquet.
+    Returns 'exists', 'saved' or 'failed'."""
+    path = laps_path(year, rnd, code)
+    if path.exists():
+        return "exists"
+    try:     
+        session = fastf1.get_session(year, rnd, code)
+        session.load(telemetry = False, weather = False)
+        laps = pd.DataFrame(session.laps)
+        if laps.empty: 
+            return "failed"
+        if "Deleted" in laps.columns: 
+            laps["Deleted"] = laps["Deleted"].fillna(False).astype(bool)
+        
+        # Official team colours (grey if a team is not recognised)    
+        colors = {}
+        for team in laps["Team"].dropna().unique():
+            try: 
+                colors[team] = fastf1.plotting.get_team_color(team, session = session)
+            except Exception: 
+                colors[team] = DEFAULT_COLOR
+        laps["TeamColor"] = laps["Team"].map(colors).fillna(DEFAULT_COLOR)
+        
+        cols = [c for c in COLUMNS if c in laps.columns] + ["TeamColor"]
+        DATA_DIR.mkdir(parents= True, exist_ok = True)
+        laps[cols].to_parquet(path, index=False)
+        return "saved"
+    except Exception as e: 
+        print(f"Download error: {type(e).__name__}: {e}")
+        return "failed"
     
 
-if __name__ == "__main__":
-    print('Starting test: Monza 24 Race')
-    test_laps = load_laps(2024, 'Monza', 'R')
-
-    
-    print('\n Data saved with success. Keywords: ')
-    cols = ['Driver', 'LapNumber', 'LapTime', 'Compound', 'TyreLife', 'Stint', 'PitInTime', 'PitOutTime', 'TrackStatus']
-    print(test_laps[cols].head())
-    print("\nPiloti:", sorted(test_laps['Driver'].unique()))
-    print("Mescole:", test_laps['Compound'].unique())
+def team_color_map(laps: pd.DataFrame) -> dict:
+    """{team name: hex colour} for the teams in a laps table."""
+    if "TeamColor" not in laps.columns:
+        return {t: DEFAULT_COLOR for t in laps["Team"].dropna().unique()}
+    return dict(zip(laps["Team"], laps["TeamColor"]))

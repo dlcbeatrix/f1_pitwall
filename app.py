@@ -1,13 +1,14 @@
 import streamlit as st
 
-st.set_page_config(page_title='F1 Pit Wall', layout= 'wide')
+from src.data import (enable_cache)
 
-#Main page title
-st.title('F1 Pit Wall Dashboard')
+st.set_page_config(page_title='F1 Pit Wall', layout= 'wide', icon=":material/sports_score")
+enable_cache()
 
-#Sidebar setup 
-st.sidebar.header('Session Controls')
-st.sidebar.info('Year, Race and driver selection will be placed here')
+home_page = st.Page("views/home.py", title = "Home", icon = ":material/home")
+tyre_deg_page = st.Page("views/tyre_deg.py", title="Tyre Degradation", icon=":material/tire_repair:")
 
-#Main area placeholder
-st.write('Welcome to the pit wall')
+pg = st.navigation([home_page, tyre_deg_page])
+pg.run()
+
+
