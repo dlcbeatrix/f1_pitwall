@@ -4,7 +4,7 @@ import fastf1
 import pandas as pd
 import streamlit as st
 
-from src.data import (SESSION_LABELS, download_laps, event_sessions, laps_path)
+from src.data import (SESSION_LABELS, download_laps, event_sessions, laps_path, download_speed, speed_path)
 
 @st.cache_data(ttl = 3600, show_spinner=False)
 def get_schedule(year:int):
@@ -81,3 +81,24 @@ def get_laps(year: int, rnd: int, code:str)-> pd.DataFrame:
             st.rerun()
         st.stop()
     return read_laps(str(path))
+
+#NOISY RADIO
+@st.cache_data(show_spinner=False)
+def read_speed(path: str) -> pd.DataFrame:
+    return pd.read_parquet(path)
+
+def get_speed(year: int, rnd: int, code:str, driver:str)-> pd.DataFrame:
+    """Return time and speed of the fastest lap."""
+    path = speed_path(year, rnd, code, driver)
+    if not path.exists():
+        st.info('The telemetry of the selected driver is not saved yet. Downloading can take a couple of minutes.')
+        if st.button("Download Telemetry", icon=":material/download:"):
+            with st.spinner("Downloading telemetry from the F1 servers..."):
+                status = download_speed(year, rnd, code, driver)
+            if status == 'failed':
+                st.error('Download failed. Try another driver or session')
+                st.stop()
+            st.rerun()
+        st.stop()
+    return read_speed(str(path))
+        

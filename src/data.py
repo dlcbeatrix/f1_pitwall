@@ -1,6 +1,7 @@
 import fastf1
 import fastf1.plotting
 import pandas as pd
+import traceback
 
 
 from pathlib import Path
@@ -9,6 +10,7 @@ fastf1.set_log_level('WARNING')
 
 DATA_DIR = Path("data/laps")
 CACHE_DIR = Path("cache")
+SPEED_DIR = Path("data/speed")
 DEFAULT_COLOR = "gray"
 
 COLUMNS = [
@@ -81,3 +83,30 @@ def team_color_map(laps: pd.DataFrame) -> dict:
     if "TeamColor" not in laps.columns:
         return {t: DEFAULT_COLOR for t in laps["Team"].dropna().unique()}
     return dict(zip(laps["Team"], laps["TeamColor"]))
+
+def speed_path(year: int, rnd: int, code: str, driver: str)->Path: 
+    return SPEED_DIR /f"{year}_{rnd:02d}_{code}_{driver}.parquet"
+
+def download_speed(year: int, rnd: int, code: str, driver: str)->str:
+    """Save time and speed of the fastest lap of a driver. This needs telemetry.
+    Returnn 'exists', 'saved' or 'failed'."""
+    
+    path = speed_path(year, rnd, code, driver)
+    if path.exists():
+        return 'exists'
+    try: 
+        session = fastf1.get_session(year, rnd, code)
+        session.load(laps=True, telemetry = True, weather ="False", messages = "False")
+        fastest = session.laps.pick_drivers(driver).pick_fastest()
+        car_data = fastest.get_car_data()
+        trace = pd.DataFrame({
+            "Time": car_data["Time"].dt.total_seconds(),
+            "Speed": car_data["Speed"],
+        })
+        SPEED_DIR.mkdir(parents=True, exist_ok = True)
+        trace.to_parquet(path, index = False)
+        return 'saved'
+    except Exception as e: 
+        print(f'Speed download error: {type(e).__name__}: {e}')
+        traceback.print_exc()
+        return 'failed'
