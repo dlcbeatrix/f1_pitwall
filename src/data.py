@@ -18,12 +18,12 @@ COLUMNS = [
 ]
 
 SESSION_CODES = {
-    "Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3",
-    "Qualifying": "Q", "Sprint Qualifying": "SQ", "Sprint Shootout": "SS",
-    "Sprint": "S", "Race": "R",
+    "Practice 1": "FP1", "Practice 2": "FP2", "Practice 3": "FP3", "Sprint Shootout": "SS", 
+    "Sprint Qualifying" : "SQ", "Sprint": "S", "Qualifying" : "Q", "Race": "R",
 }
 SESSION_LABELS = {code: name for name, code in SESSION_CODES.items()}
-RACE_LIKE = {"R", "S"} 
+TYRE_SESSIONS = {"FP1", "FP2", "FP3", "S", "R"}   # sessions shown in Tyre Degradation
+QUALI_SESSIONS = {"Q", "SQ", "SS"}                # sessions shown in Qualifying Gap
 
 def enable_cache():
     CACHE_DIR.mkdir(exist_ok= True)
@@ -43,7 +43,7 @@ def event_sessions(event) ->list:
 
 
 
-def download_laps(year: int, rnd: int, code: str) -> pd.DataFrame:
+def download_laps(year: int, rnd: int, code: str) -> str:
     """Download one session and save its laps as parquet.
     Returns 'exists', 'saved' or 'failed'."""
     path = laps_path(year, rnd, code)
