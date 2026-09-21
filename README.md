@@ -1,6 +1,6 @@
 # 🏎️ F1 Pit Wall Dashboard
 ![Project Date](https://img.shields.io/badge/date-September%202026-orange)
-![Project Status](https://img.shields.io/badge/status-working_but_still_in_progress-brightgreen)
+![Project Status](https://img.shields.io/badge/status-working_but_still_in_progress-yellow)
 ![Tech Stack](https://img.shields.io/badge/python-3.14.3-blue)
 
 F1 Pit Wall Dashboard is a data-driven Streamlit application for Formula 1 race analysis, integrating real-world telemetry using FastF1, tyre degradation analysis, and digital communication simulations. 
