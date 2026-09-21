@@ -1,7 +1,7 @@
 # 🏎️ F1 Pit Wall Dashboard
 ![Project Date](https://img.shields.io/badge/date-September%202026-orange)
-![Project Status](https://img.shields.io/badge/status-in_progress-brightgreen)
-![Tech Stack](https://img.shields.io/badge/python-3.0-blue)
+![Project Status](https://img.shields.io/badge/status-working_but_still_in_progress-brightgreen)
+![Tech Stack](https://img.shields.io/badge/python-3.14.3-blue)
 
 F1 Pit Wall Dashboard is a data-driven Streamlit application for Formula 1 race analysis, integrating real-world telemetry using FastF1, tyre degradation analysis, and digital communication simulations. 
 
@@ -24,7 +24,7 @@ Estimates tyre degradation by analyzing stint pace, correcting raw lap times wit
 #### 📐 Formulas 
 **Fuel correction:**
 To isolate pure tyre drop-off, lap times are adjusted to account for the car getting lighter considering a fuel effect. A standard F1 rule of thumb states that 10 kg of fuel weight costs ~0.3 seconds per lap. 
-Assuming an average fuel consumption of 1.5 - 2.0 kg per lap, the car naturally gains roughly 0.05 to 0.06 seconds per lap purely from weight reduction. 
+So, assuming an average fuel consumption of 1.5 - 2.0 kg per lap, the car naturally gains roughly 0.05 to 0.06 seconds per lap purely from weight reduction. 
 To neutralize this weight advantage and observe the true tyre performance, you add this time back to the raw lap times:
 $$\text{Corrected Time} = \text{Raw Lap Time} + (\text{Fuel Effect} \times \text{Lap Number})$$
 
@@ -86,7 +86,8 @@ Where $\Delta$ is the quantization step.
 
 ---
 ## 🔮 Future Developments
-* Race Strategy Simulator
+* **Race Strategy Simulator**
+* **Noisy Radio — Level B:** compare bandpass PAM and QAM constellations, plot simulated vs. theoretical SER curves, and derive the required $E_b/N_0$ for a target SER to compare spectral and energy efficiency across modulation schemes.
 
 ---
 
@@ -104,7 +105,7 @@ Where $\Delta$ is the quantization step.
 
 1. Clone this repository:
    ```bash
-   git clone [https://github.com/dlcbeatrix/f1_pitwall.git](https://github.com/dlcbeatrix/f1_pitwall.git)
+   git clone https://github.com/dlcbeatrix/f1_pitwall.git
    cd f1_pitwall
 2. Create and activate a virtual environment:
 
