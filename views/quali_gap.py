@@ -1,4 +1,6 @@
-import streamlit as st
+#COMING SOON
+
+"""import streamlit as st
 
 
 if code not in RACE_LIKE:
@@ -23,4 +25,4 @@ if code not in RACE_LIKE:
     st.plotly_chart(fig)
     
     st.caption("Tyre degradation is only available for races and sprints")
-    st.stop()
+    st.stop()"""
