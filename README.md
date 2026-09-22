@@ -1,7 +1,9 @@
 # 🏎️ F1 Pit Wall Dashboard
 ![Project Date](https://img.shields.io/badge/date-September%202026-orange)
 ![Project Status](https://img.shields.io/badge/status-working_but_still_in_progress-yellow)
-![Tech Stack](https://img.shields.io/badge/python-3.14.3-blue)
+* **Core Language:** ![Python 3](https://img.shields.io/badge/Python_3-3776AB?style=flat&logo=python&logoColor=white)
+* **Libraries & Frameworks:** ![Streamlit](https://img.shields.io/badge/Streamlit-FF4B4B?style=flat&logo=streamlit&logoColor=white) ![Pandas](https://img.shields.io/badge/Pandas-150458?style=flat&logo=pandas&logoColor=white) ![FastF1](https://img.shields.io/badge/FastF1-000000?style=flat&logo=formula1&logoColor=white)
+* **Engineering Concepts:** ![Signal Processing](https://img.shields.io/badge/Signal_Processing-00599C?style=flat) ![AWGN Channel](https://img.shields.io/badge/AWGN_Channel-4B0082?style=flat)
 
 F1 Pit Wall Dashboard is a data-driven Streamlit application for Formula 1 race analysis, integrating real-world telemetry using FastF1, tyre degradation analysis, and digital communication simulations. 
 
