@@ -8,6 +8,10 @@
 F1 Pit Wall Dashboard is a data-driven Streamlit application for Formula 1 race analysis, integrating real-world telemetry using FastF1, tyre degradation analysis, and digital communication simulations. 
 
 🔗 **[Live Demo: Play with the Dashboard here](https://f1pitwalldashboard.streamlit.app/)**
+#### ⚠️ Known Limitations
+> F1's live-timing servers block requests from cloud hosting IPs (including Streamlit 
+> Community Cloud). The live demo ships with a curated set of pre-downloaded sessions (you can find them in the data folder; selecting 
+> a session or a telemetry (speed) outside that set will fail to download when running in the cloud (it works fine locally).
 
 ![Dashboard Preview](docs/preview.png)
 <p align="center"><sub>Fig. 1: A full overview of the F1 Pit Wall Dashboard interface.</sub></p>
