@@ -1,9 +1,4 @@
 import fastf1
-try:
-    fastf1.config.Set("core", "data_source", "jolpica")
-except AttributeError:
-    pass 
-
 import fastf1.plotting
 import pandas as pd
 import traceback
