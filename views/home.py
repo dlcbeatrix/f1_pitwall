@@ -18,5 +18,5 @@ with col3:
         st.switch_page("views/noisy_radio.py")
         
 with col4: 
-    if st.button("Coming soon", icon= ":material/upcoming:", use_container_width=True):
-        pass
+    if st.button("Race Strategy Predictor", icon= ":material/upcoming:", use_container_width=True):
+        st.switch_page("views/race_strategy.py")

@@ -3,7 +3,6 @@ from datetime import datetime
 import fastf1
 import pandas as pd
 import streamlit as st
-
 from src.data import (SESSION_LABELS, download_laps, event_sessions, laps_path, download_speed, speed_path)
 
 @st.cache_data(ttl = 3600, show_spinner=False)
@@ -82,6 +81,35 @@ def get_laps(year: int, rnd: int, code:str)-> pd.DataFrame:
         st.stop()
     return read_laps(str(path))
 
+def show_sessions_status(sessions: list):
+    """Shows which sessions are saved and a download button for the missing ones. 
+    sessions: list of (year, round, code). Stops the page if any is missing"""
+    
+    missing = []
+    for year, rnd, code in sessions: 
+        name = f"{year} {SESSION_LABELS[code]}"
+        
+        if laps_path(year, rnd, code).exists():
+            st.success(f"{name}: data already saved", icon = ":material/check_circle:")
+        else:
+            missing.append((year, rnd, code))
+            st.warning(f"{name}: not saved yet")
+
+    if missing:
+        if st.button("Download missing sessions", icon=":material/download:"):
+            failed = []
+            with st.spinner("Downloading from the F1 servers, it can take a few minutes..."):
+                for year, rnd, code in missing:
+                    status = download_laps(year, rnd, code)
+                    if status == "failed":
+                        failed.append(f"{year} {SESSION_LABELS[code]}")
+            if failed:
+                st.error("Download failed for: " + ", ".join(failed))
+            else:
+                st.rerun()
+        st.stop()
+                
+
 #NOISY RADIO
 @st.cache_data(show_spinner=False)
 def read_speed(path: str) -> pd.DataFrame:
@@ -101,4 +129,15 @@ def get_speed(year: int, rnd: int, code:str, driver:str)-> pd.DataFrame:
             st.rerun()
         st.stop()
     return read_speed(str(path))
+
+#RACE STRATEGY
+def race_selector(races: dict):
+    """Draw a menu with only the given races in the sidebar. Stops the page until one is chosen."""
+    
+    st.sidebar.header("Race")
+    label = st.sidebar.selectbox("Circuit", list(races.keys()), index = None, placeholder="Select a circuit")
+    if label is None: 
+        st.info("Select a circuit in the sidebar to start")
+        st.stop()
+    return label, races[label]
         

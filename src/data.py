@@ -96,7 +96,7 @@ def download_speed(year: int, rnd: int, code: str, driver: str)->str:
         return 'exists'
     try: 
         session = fastf1.get_session(year, rnd, code)
-        session.load(laps=True, telemetry = True, weather ="False", messages = "False")
+        session.load(laps=True, telemetry = True, weather = False, messages = False)
         fastest = session.laps.pick_drivers(driver).pick_fastest()
         car_data = fastest.get_car_data()
         trace = pd.DataFrame({

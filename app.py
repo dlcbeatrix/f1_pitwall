@@ -9,8 +9,9 @@ home_page = st.Page("views/home.py", title = "Home", icon = ":material/home:")
 tyre_deg_page = st.Page("views/tyre_degradation.py", title="Tyre Degradation", icon=":material/tire_repair:")
 noisy_page = st.Page("views/noisy_radio.py", title="The Noisy Radio", icon=":material/settings_input_antenna:")
 quali_gap_page =st.Page("views/quali_gap.py", title="Qualifying Gap", icon=":material/timer:")
+race_strategy_page = st.Page("views/race_strategy.py", title="Race Strategy Predictor", icon=":material/strategy:")
 
-pg = st.navigation([home_page, tyre_deg_page, noisy_page, quali_gap_page])
+pg = st.navigation([home_page, tyre_deg_page, noisy_page, quali_gap_page, race_strategy_page])
 pg.run()
 
 
