@@ -14,11 +14,20 @@ RACES = {
     "Marina Bay (Singapore)": "Singapore Grand Prix",
 }
 
+TYRE_OFFSET = {
+    "Hungaroring": {"SOFT": -0.45, "MEDIUM": 0.0, "HARD": 0.55},
+    "Suzuka": {"SOFT": -0.5,"MEDIUM": 0.0, "HARD": 0.45},
+    "Spa-Francorchamps": {"SOFT": -0.45,"MEDIUM": 0.0, "HARD": 0.5},
+    "Marina Bay (Singapore)":{"SOFT": -0.45,"MEDIUM": 0.0, "HARD": 0.55}
+}
+
 RACE_CODE = "R"
 
 DRY_COMPOUNDS = ["SOFT", "MEDIUM", "HARD"]
 
 MIN_RACE_LAPS = 100
+
+FUEL_EFFECT = 0.05
 
 @dataclass
 class SessionSources: 
@@ -71,7 +80,7 @@ def find_session_sources(event_name: str)-> SessionSources:
     return SessionSources(practice_year, practice_round, practice_sessions, race_year, race_round)
 
 
-def clean_laps_all_drivers(laps: pd.DataFrame, fuel_effect: float = 0.03, min_stint_laps: int = 1)-> pd.DataFrame:
+def clean_laps_all_drivers(laps: pd.DataFrame, fuel_effect: float = FUEL_EFFECT, min_stint_laps: int = 1)-> pd.DataFrame:
     """Clean the laps for every driver and return them in a single table"""
     cleaned_laps = []
     for driver in laps["Driver"].unique():
@@ -79,7 +88,42 @@ def clean_laps_all_drivers(laps: pd.DataFrame, fuel_effect: float = 0.03, min_st
         cleaned_laps.append(driver_laps)
     return pd.concat(cleaned_laps, ignore_index= True)
 
-
+def estimate_driver_pace_offset(race_laps: pd.DataFrame, base_pace: float, compound_params: dict, fuel_effect: float = FUEL_EFFECT, min_stint_laps: int = 3)->pd.DataFrame:
+    clean = clean_laps_all_drivers(race_laps, fuel_effect, min_stint_laps)
+    
+    columns = ["Driver", "PaceOffset", "CleanLaps"]
+    
+    if clean.empty: 
+        return pd.DataFrame(columns= columns)
+    
+    valid_laps = clean["Compound"].isin(compound_params.keys()) & clean["TyreLife"].notna()
+    clean = clean[valid_laps].copy()
+    
+    if clean.empty: 
+            return pd.DataFrame(columns= columns)
+        
+    compound_offset = {compound: params["offset"] 
+                       for compound, params in compound_params.items()
+                       }
+    compound_degradation = { compound: params["degradation"]
+                            for compound, params in compound_params.items()
+                            }
+    
+    clean["ModelPace"] = (base_pace + clean["Compound"].map(compound_offset) + clean["Compound"].map(compound_degradation) * clean["TyreLife"])
+    clean["PaceResidual"] = clean["LapTimeCorrect"] - clean["ModelPace"]
+    
+    driver_paces = (clean.groupby("Driver").agg(
+        RawOffset = ("PaceResidual", "median"),
+        CleanLaps = ("PaceResidual", "count")
+        ).reset_index()
+    )
+    
+    field_reference = driver_paces["RawOffset"].median()
+    
+    driver_paces["PaceOffset"] = driver_paces["RawOffset"] - field_reference
+    
+    return (driver_paces[columns].sort_values("PaceOffset").reset_index(drop = True))
+    
 def estimate_pit_loss(race_laps: pd.DataFrame)-> tuple:
     """Estimate green-flag pit loss (in seconds) as the median over all stops in race laps"""
     
@@ -165,7 +209,7 @@ def estimate_pit_loss(race_laps: pd.DataFrame)-> tuple:
     skipped_table = pd.DataFrame(skipped, columns=["Driver", "Lap", "Reason"])
     return float(np.median(losses)), stops_table, skipped_table
     
-def clean_sessions(laps_by_sessions: dict, fuel_effect: float = 0.03, min_stint_laps: int = 3)-> pd.DataFrame:
+def clean_sessions(laps_by_sessions: dict, fuel_effect: float = FUEL_EFFECT, min_stint_laps: int = 3)-> pd.DataFrame:
     """Clean every session on its own and put the results in one table"""
     
     cleaned = []
@@ -175,7 +219,7 @@ def clean_sessions(laps_by_sessions: dict, fuel_effect: float = 0.03, min_stint_
         cleaned.append(session_laps)
     return pd.concat(cleaned, ignore_index=True)
 
-def calibrate_tyre_degradation(laps_by_session: dict, fuel_effect: float = 0.03, min_stint_laps = 3)->pd.DataFrame:
+def calibrate_tyre_degradation(laps_by_session: dict, fuel_effect: float = FUEL_EFFECT, min_stint_laps = 3)->pd.DataFrame:
     """Estimate tyre pace and degradation from available practice sessions"""
     
     cleaned = clean_sessions(laps_by_session,fuel_effect, min_stint_laps)
