@@ -18,6 +18,8 @@ RACE_CODE = "R"
 
 DRY_COMPOUNDS = ["SOFT", "MEDIUM", "HARD"]
 
+MIN_RACE_LAPS = 100
+
 @dataclass
 class SessionSources: 
     practice_year: int | None
@@ -78,7 +80,7 @@ def clean_laps_all_drivers(laps: pd.DataFrame, fuel_effect: float = 0.03, min_st
     return pd.concat(cleaned_laps, ignore_index= True)
 
 
-def estimate_pit_loss(race_laps: pd.DataFrame)-> float:
+def estimate_pit_loss(race_laps: pd.DataFrame)-> tuple:
     """Estimate green-flag pit loss (in seconds) as the median over all stops in race laps"""
     
     clean = clean_laps_all_drivers(race_laps)
@@ -106,6 +108,10 @@ def estimate_pit_loss(race_laps: pd.DataFrame)-> float:
             skipped.append((driver, lap_number, "no reference pace"))
             continue
         
+        if pd.notna(in_lap["PitOutTime"]):
+            skipped.append((driver, lap_number, "In-lap is also an out-lap"))
+            continue
+        
         next_laps = race_laps[(race_laps["Driver"]== driver) & (race_laps["LapNumber"] == lap_number+1)]
         
         if next_laps.empty:
@@ -117,11 +123,8 @@ def estimate_pit_loss(race_laps: pd.DataFrame)-> float:
             continue
         out_lap = out_lap_candidates.iloc[0]
         
-        if out_lap.empty: 
-            continue
-        
         if out_lap["TrackStatus"] !="1":
-            skipped.append((driver, lap_number, "Exit lap not wit a green flag"))
+            skipped.append((driver, lap_number, "Exit lap not with a green flag"))
             continue
         
         if pd.isna(out_lap["LapTime"]):
@@ -144,7 +147,7 @@ def estimate_pit_loss(race_laps: pd.DataFrame)-> float:
             })
         
     if len(losses) == 0: 
-        return float("nan")
+        return float("nan"), pd.DataFrame(), pd.DataFrame()
     
     print("Valid pit stops:")
     for stop in sorted(pit_details, key=lambda item: item["Loss"]):
@@ -158,35 +161,51 @@ def estimate_pit_loss(race_laps: pd.DataFrame)-> float:
     for driver, lap_number, reason in skipped: 
         print(f"Excluded: {driver}, lap {lap_number}: {reason}")
     
-    return float(np.median(losses))
+    stops_table = pd.DataFrame(pit_details)
+    skipped_table = pd.DataFrame(skipped, columns=["Driver", "Lap", "Reason"])
+    return float(np.median(losses)), stops_table, skipped_table
     
-def calibrate_tyre_degradation(laps: pd.DataFrame, fuel_effect: float = 0.03, min_stint_laps = 3)->pd.DataFrame:
+def clean_sessions(laps_by_sessions: dict, fuel_effect: float = 0.03, min_stint_laps: int = 3)-> pd.DataFrame:
+    """Clean every session on its own and put the results in one table"""
+    
+    cleaned = []
+    for code, laps in laps_by_sessions.items():
+        session_laps = clean_laps_all_drivers(laps, fuel_effect, min_stint_laps)
+        session_laps["Session"] = code
+        cleaned.append(session_laps)
+    return pd.concat(cleaned, ignore_index=True)
+
+def calibrate_tyre_degradation(laps_by_session: dict, fuel_effect: float = 0.03, min_stint_laps = 3)->pd.DataFrame:
     """Estimate tyre pace and degradation from available practice sessions"""
     
-    clean_laps = clean_laps_all_drivers(laps, fuel_effect, min_stint_laps)
+    cleaned = clean_sessions(laps_by_session,fuel_effect, min_stint_laps)
+    cleaned = cleaned[cleaned["Compound"].isin(DRY_COMPOUNDS)]
     
-    if clean_laps.empty: 
-        return pd.DataFrame(columns=["Compound", "Degradation", "Drivers", "Stints", "Laps"])
     
-    required = {"Driver", "Stint", "Compound", "TyreLife", "LapTimeCorrect"}
-    missing = required - set(clean_laps.columns)
+    if cleaned.empty: 
+        return pd.DataFrame(columns=["Compound", "Degradation", "Drivers", "Stints", "Laps", "BasePace"])
+    
+    required = {"Driver", "Session", "Stint", "Compound", "TyreLife", "LapTimeCorrect"}
+    missing = required - set(cleaned.columns)
     if missing: 
         raise ValueError(f"Missing columns to estimate degradation: {sorted(missing)}")
     
     stint_rows = []
     
-    for (driver, stint), stint_laps in clean_laps.groupby(["Driver", "Stint"]):
+    for (driver, session, stint), stint_laps in cleaned.groupby(["Driver","Session", "Stint"]):
         stint_laps = stint_laps.dropna(subset=["TyreLife", "LapTimeCorrect", "Compound"])
         
         if len(stint_laps) < 2 or stint_laps["TyreLife"].nunique()<2: 
             continue
         
-        slope, _ = np.polyfit(stint_laps["TyreLife"].astype(float), stint_laps["LapTimeCorrect"].astype(float), 1)
+        slope, intercept = np.polyfit(stint_laps["TyreLife"].astype(float), stint_laps["LapTimeCorrect"].astype(float), 1)
         
         stint_rows.append({
             "Driver": driver, 
+            "Session": session,
             "Stint": stint, 
             "Compound": stint_laps["Compound"].iloc[0],
+            "BasePace": intercept,
             "Degradation": slope,
             "Laps": len(stint_laps)
         })
@@ -194,23 +213,38 @@ def calibrate_tyre_degradation(laps: pd.DataFrame, fuel_effect: float = 0.03, mi
     stint_results = pd.DataFrame(stint_rows)
         
     if stint_results.empty: 
-        return pd.DataFrame(columns=["Compound", "Degradation", "Drivers", "Stints", "Laps"])
+        return pd.DataFrame(columns=["Compound", "Degradation", "Drivers", "Stints", "Laps", "BasePace"])
     
     driver_result = (stint_results.groupby(["Driver", "Compound"],as_index= False).agg(
-        Degradation = ("Degradation", "median"), Stints = ("Stint", "count"), Laps=("Laps", "sum"),
+        Degradation = ("Degradation", "median"), Stints = ("Stint", "count"), Laps=("Laps", "sum"), BasePace=("BasePace", "median")
         )
     )
     
     calibration = (driver_result.groupby("Compound", as_index= False).agg(
-        Degradation=("Degradation", "median"), Drivers=("Driver", "nunique"), Stints=("Stints", "sum"), Laps=("Laps", "sum"),
+        Degradation=("Degradation", "median"), Drivers=("Driver", "nunique"), Stints=("Stints", "sum"), Laps=("Laps", "sum"), BasePace=("BasePace", "median")
         ).sort_values("Compound").reset_index(drop=True)
     )
     
+    print(stint_results.groupby("Compound").size())
     return calibration
     
 
-def build_calibration(target_year: int, round_number: int)-> dict: 
-    """Build the calibration inputs for one target event"""
-    raise NotImplementedError
-    
+def build_degradation_model(practice: pd.DataFrame, race: pd.DataFrame)-> pd.DataFrame:
+    """One degradation value per compound: race value if it has enough laps,
+    otherwise practice value. Degradation is never below zero."""
+    rows = []
+    for compound in DRY_COMPOUNDS:
+        in_race = race[race["Compound"] == compound]
+        in_practice = practice[practice["Compound"] == compound]
+        
+        if not in_race.empty and in_race["Laps"].iloc[0] >= MIN_RACE_LAPS:
+            degradation = in_race["Degradation"].iloc[0]
+            source = 'race'
+        elif not in_practice.empty: 
+            degradation = in_practice["Degradation"].iloc[0]
+            source = 'practice'
+        else:
+            continue
+        rows.append({"Compound": compound, "Degradation": max(degradation, 0.0), "Source": source})
+    return pd.DataFrame(rows)
 
