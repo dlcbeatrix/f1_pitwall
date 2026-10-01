@@ -1,15 +1,12 @@
 import streamlit as st
 import plotly.express as px
 
-from src.data import (DEFAULT_COLOR, TYRE_SESSIONS, SESSION_LABELS, team_color_map)
+from src.data import (DEFAULT_COLOR, TYRE_SESSIONS, SESSION_LABELS, team_color_map, COMPOUND_COLORS)
 from src.tyres import clean_laps, tyres_degradation
 from src.ui import (format_time, get_laps, session_selector)
 
 
-COMPOUND_COLORS = {
-    "SOFT": "#e10600", "MEDIUM": "#f5c400", "HARD": "#888888",
-    "INTERMEDIATE": "#43b02a", "WET": "#0067ad",
-}
+
 
 
 st.title('Tyre Degradation Analysis')

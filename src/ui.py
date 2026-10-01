@@ -3,7 +3,8 @@ from datetime import datetime
 import fastf1
 import pandas as pd
 import streamlit as st
-from src.data import (SESSION_LABELS, download_laps, event_sessions, laps_path, download_speed, speed_path)
+import plotly.graph_objects as go
+from src.data import (SESSION_LABELS, download_laps, event_sessions, laps_path, download_speed, speed_path, COMPOUND_COLORS)
 
 @st.cache_data(ttl = 3600, show_spinner=False)
 def get_schedule(year:int):
@@ -141,3 +142,20 @@ def race_selector(races: dict):
         st.stop()
     return label, races[label]
         
+def strategy_bar_chart(results: list):
+    """Horizontal stacked bars: one row per strategy, one segment per stint."""
+    fig = go.Figure()
+    shown = set()
+    for result in results:
+        for compound, laps in result["Stints"]:
+            fig.add_trace(go.Bar(
+                y=[result["Strategy"]], x=[laps], orientation="h",
+                name=compound, marker_color=COMPOUND_COLORS[compound],
+                text=[laps], textposition="inside",
+                legendgroup=compound, showlegend=compound not in shown,
+            ))
+            shown.add(compound)
+    fig.update_layout(barmode="stack", xaxis_title="Laps",
+                      yaxis=dict(autorange="reversed"),
+                      height=max(300, 28 * len(results) + 120))
+    return fig

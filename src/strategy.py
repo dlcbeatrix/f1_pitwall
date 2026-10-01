@@ -1,7 +1,8 @@
 from src.calibration import FUEL_EFFECT
 from itertools import product
 
-def simulate_strategy(strategy: list, base_pace: float, compound_params: dict, pit_loss: float, fuel_effect: float = FUEL_EFFECT)->list:
+def simulate_strategy(strategy: list, base_pace: float, compound_params: dict, pit_loss: float, fuel_effect: float = FUEL_EFFECT,
+                      knee_ages: dict | None = None, cliff_slope: float = 0.0)->list:
     """Lap times (seconds) of a strategy.
     Strategy = list of compound and number of laps, e.g. [("SOFT", 15), ("HARD", 33)]"""
     
@@ -11,9 +12,17 @@ def simulate_strategy(strategy: list, base_pace: float, compound_params: dict, p
     for stint_index, (compound, stint_laps) in enumerate(strategy):
         params = compound_params[compound]
         
+        knee = None
+        if knee_ages is not None: 
+            knee = knee_ages.get(compound)
+            
         for tyre_age in range(1, stint_laps + 1):
             lap_number += 1
             lap_time = (base_pace + params["offset"] + params["degradation"]*tyre_age - fuel_effect* lap_number)
+        
+            if knee is not None and tyre_age > knee: 
+                lap_time += cliff_slope * (tyre_age-knee)
+            
             lap_times.append(lap_time)
         
         is_last_stint = stint_index == len(strategy)-1

@@ -27,6 +27,11 @@ SESSION_LABELS = {code: name for name, code in SESSION_CODES.items()}
 TYRE_SESSIONS = {"FP1", "FP2", "FP3", "S", "R"}   # sessions shown in Tyre Degradation
 QUALI_SESSIONS = {"Q", "SQ", "SS"}                # sessions shown in Qualifying Gap
 
+COMPOUND_COLORS = {
+    "SOFT": "#e10600", "MEDIUM": "#f5c400", "HARD": "#888888",
+    "INTERMEDIATE": "#43b02a", "WET": "#0067ad",
+}
+
 def enable_cache():
     CACHE_DIR.mkdir(exist_ok= True)
     fastf1.Cache.enable_cache(str(CACHE_DIR))
