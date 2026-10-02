@@ -94,9 +94,73 @@ Where $\Delta$ is the quantization step.
 ![Reconstruction and BER](docs/noisy5.png)
 <p align="center"><sub>Fig. 11: Reconstructed signal comparison against the original, highlighting the final MSE and BER after AWGN channel transmission.</sub></p>
 
+### 4. 🎯 Race Strategy Predictor (work in progress)
+
+For four reference circuits (Hungaroring, Spa-Francorchamps, Suzuka and Marina Bay), the module estimates race strategies under green-flag conditions and compares two drivers lap by lap. It uses real FastF1 lap data; assumptions that cannot be estimated reliably from public data are exposed as sliders.
+
+- Selects the latest available race and practice sessions for each circuit, and shows which sessions are used.
+- Estimates green-flag pit stop loss as the median of valid stops, and displays valid and excluded stops.
+- Estimates tyre degradation by compound, using race data when available and practice data as a fallback.
+- Estimates a preliminary pace offset for each driver.
+- Generates 1-stop and 2-stop strategies using at least two compounds. For each set of compounds, it keeps the fastest stint split and displays the result with a tyre-coloured bar chart.
+- Compares two drivers using a selected strategy for each.
+
+#### 📐 Formulas
+
+**Lap time model** (`a` = tyre age, `n` = lap number, `d` = degradation, `k` = fuel effect):
+
+$$t_{\mathrm{lap}} = t_{\mathrm{base}} + \Delta_{\mathrm{compound}} + d \cdot a - k \cdot n$$
+
+**Pit stop loss**, calculated for each valid green-flag stop and summarized as the median:
+
+$$L_{\mathrm{pit}} = t_{\mathrm{in-lap}} + t_{\mathrm{out-lap}} - 2\tilde{t}_{\mathrm{clean}}$$
+
+where $\tilde{t}_{\mathrm{clean}}$ is the median clean lap time for that driver.
+
+**Gap between drivers**, calculated lap by lap:
+
+$$g_n = g_{n-1} + (t_{\mathrm{rival},n} - t_{\mathrm{driver},n})$$
+
+A positive gap means the selected driver is ahead; a negative gap means the rival is ahead.
+
+#### ✅ Example comparison
+
+For Suzuka 2026, the simulated race time was 83:31.431, compared with the official winner's time of 1:28:03.403. This is an indicative comparison, not a direct validation: the simulation assumes green-flag running and does not reproduce all race conditions.
+
+#### ⚠️ Known Limitations
+
+- **Green-flag model:** Safety Cars, Virtual Safety Cars, red flags and rain are not simulated yet.
+- **No traffic or overtaking model:** the selected starting position and gap set the initial conditions; the simulation does not model cars physically defending or passing each other.
+- **Preliminary driver pace offsets:** offsets are estimated from observed race laps after tyre and fuel corrections. They may also reflect car performance, tyre choice, setup, traffic and race conditions, so they are not a pure measure of driver ability.
+- **Simplified driver comparison:** both drivers are simulated under green-flag conditions using the selected strategies and initial gap.
+- **Tyre cliff is manual:** the page shows an empirical wear curve, but does not detect the cliff automatically. The user can set what-if cliff parameters with the sidebar sliders.
+- **Compound pace offsets** come from public Pirelli/F1 sources and are assumptions, not measurements.
+- **Compound labels:** Soft, Medium and Hard refer to the weekend's assigned compounds, which can change between events and seasons.
+- **Practice data:** practice laps can be affected by track evolution and different fuel loads, so they are used as a fallback.
+- **Small samples:** some compounds have few stints, and the pit loss may rely on a limited number of green-flag stops.
+- **Cross-season data:** when practice and race data come from different seasons, regulation changes may affect comparability.
+
+![Race Strategy Page](docs/strategy1.png)
+<p align="center"><sub>Fig. 12: Suzuka race strategy predictor.</sub></p>
+
+![Degradation Data](docs/strategy2.png)
+<p align="center"><sub>Fig. 13: Estimated degradation and stint duration.</sub></p>
+
+![Sidebar Assumptions](docs/strategy3.png)
+<p align="center"><sub>Fig. 14: Compound assumptions in the sidebar.</sub></p>
+
+![Tyre Wear Curve](docs/strategy4.png)
+<p align="center"><sub>Fig. 15: Empirical tyre wear curve used to inspect potential cliff behaviour.</sub></p>
+
+![Strategy Table and Stint Chart](docs/strategy5.png)
+<p align="center"><sub>Fig. 16: Ranked strategies and tyre stint chart.</sub></p>
+
+![Driver Comparison](docs/strategy6.png)
+<p align="center"><sub>Fig. 17: Simulated lap-by-lap gap between two drivers.</sub></p>
 ---
 ## 🔮 Future Developments
-* **Race Strategy Simulator**
+* **Race Strategy Predictor — next steps:** pit stops under Safety Car / Virtual Safety Car, undercut/overcut analyzer, strategy-vs-strategy matrix, Monte Carlo simulation, backtest on a race not used in the calibration.
+
 * **Noisy Radio — Level B:** compare bandpass PAM and QAM constellations, plot simulated vs. theoretical SER curves, and derive the required $E_b/N_0$ for a target SER to compare spectral and energy efficiency across modulation schemes.
 
 ---

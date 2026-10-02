@@ -147,13 +147,55 @@ if driver_offsets.empty:
     st.warning("No clean laps available to estimate driver pace")
     st.stop()
     
-selected_driver = st.selectbox("Select Driver", driver_offsets["Driver"].tolist())
-selected_row = driver_offsets[driver_offsets["Driver"] == selected_driver].iloc[0]
+    
+st.subheader("Drivers and starting situation")
+
+driver_options = driver_offsets["Driver"].tolist()
+
+driver_col, rival_col, gap_col, position_col = st.columns([1, 1, 0.8, 0.9])
+
+with driver_col:
+    selected_driver = st.selectbox(
+        "Your driver",
+        driver_options,
+    )
+
+rival_options = [
+    driver for driver in driver_options
+    if driver != selected_driver
+]
+
+with rival_col:
+    rival_driver = st.selectbox(
+        "Rival driver",
+        rival_options,
+    )
+
+with gap_col:
+    initial_gap = st.number_input(
+        "Initial gap (s)",
+        min_value=0.0,
+        value=2.0,
+        step=0.1,
+    )
+
+with position_col:
+    position = st.radio(
+        f"{selected_driver} starts",
+        ["Ahead", "Behind"],
+    )
+
+selected_row = driver_offsets[
+    driver_offsets["Driver"] == selected_driver
+].iloc[0]
 
 driver_offset = selected_row["PaceOffset"]
 driver_base_pace = base_pace + driver_offset
 
-st.metric(f"{selected_driver} pace offset", f"{driver_offset:+.3f} s/lap",)
+st.metric(
+    f"{selected_driver} pace offset",
+    f"{driver_offset:+.3f} s/lap",
+)
 
 with st.expander("Driver pace offsets"):
     display_offsets = driver_offsets.copy()
@@ -208,22 +250,36 @@ for strategy in strategies:
 
 strategy_results = sorted(best_by_sequence.values(), key=lambda result: result["TotalTime"])
 
+st.subheader("Tyre strategy comparison")
 st.write(f"Simulated strategies: {len(strategy_results)}")
+
 best_time = strategy_results[0]["TotalTime"]
-st.dataframe([
+
+strategy_table = [
     {
         "Strategy": result["Strategy"],
         "Total Time": format_time(result["TotalTime"]),
-         "Delta": f"+{result['TotalTime'] - best_time:.3f} s",
-    } for result in strategy_results[:10]
-], hide_index= True)
+        "Delta": f"+{result['TotalTime'] - best_time:.3f} s",
+    }
+    for result in strategy_results[:10]
+]
 
-st.subheader("Tyre strategy comparison")
+table_col, chart_col = st.columns([1, 1])
 
-fig = strategy_bar_chart(strategy_results[:10])
-st.plotly_chart(fig, use_container_width= True)
+with table_col:
+    st.dataframe(strategy_table, hide_index=True, use_container_width=True)
+
+with chart_col:
+    fig = strategy_bar_chart(strategy_results[:10])
+    st.plotly_chart(fig, use_container_width=True)
+
 
 st.subheader("Driver comparison - Green flag")
+st.caption(
+    "Preliminary estimate: pace offsets are based on observed race laps and may "
+    "include car performance, tyre choice and race conditions. The comparison "
+    "assumes green-flag running and does not model traffic or safety cars."
+)
 rival_options = []
 for driver in driver_offsets["Driver"].tolist():
     if driver != selected_driver:
@@ -232,18 +288,11 @@ for driver in driver_offsets["Driver"].tolist():
 if not rival_options: 
     st.warning("You need another driver with clean laps")
     st.stop()
-    
-rival_driver = st.selectbox("Select the rival driver", rival_options)
-
-initial_gap = st.number_input("Initial gap (s)", min_value = 0.0, value = 2.0, step = 0.1)
-
-position = st.radio(f"Starting position of {selected_driver}", ["Ahead", "Behind"], horizontal = True)
 
 rival_row = driver_offsets[driver_offsets["Driver"] == rival_driver].iloc[0]
 rival_offset = rival_row["PaceOffset"]
 rival_base_pace = base_pace + rival_offset
 
-#Using the fastest strategy for both drivers
 if not strategy_results: 
     st.warning("No valied strategies available for comparison")
     st.stop()
@@ -251,8 +300,21 @@ if not strategy_results:
 labels = [result["Strategy"] for result in strategy_results]
 stints_by_label = {result["Strategy"]: result["Stints"] for result in strategy_results}
 
-own_label = st.selectbox(f"{selected_driver} strategy", labels, index=0)
-rival_label = st.selectbox(f"{rival_driver} strategy", labels, index=0)
+own_col, rival_strategy_col = st.columns(2)
+
+with own_col:
+    own_label = st.selectbox(
+        f"{selected_driver} strategy",
+        labels,
+        index=0,
+    )
+
+with rival_strategy_col:
+    rival_label = st.selectbox(
+        f"{rival_driver} strategy",
+        labels,
+        index=0,
+    )
 
 selected_lap_times = simulate_strategy(
     stints_by_label[own_label],
@@ -287,18 +349,17 @@ gap_table = pd.DataFrame({"Lap": range(len(gap_by_lap)),
                           f"{selected_driver} lead(s)": gap_by_lap}
                          )
 
-st.line_chart(gap_table.set_index("Lap"))
+chart_col, result_col = st.columns([3, 1])
 
-if lead > 0:
-    st.metric(
-        "Gap at the finish",
-        f"{selected_driver} ahead by {lead:.3f} s",
-    )
-elif lead < 0:
-    st.metric(
-        "Gap at the finish",
-        f"{rival_driver} ahead by {abs(lead):.3f} s",
-    )
-else:
-    st.metric("Gap at the finish", "Equal")
+with chart_col:
+    st.line_chart(gap_table.set_index("Lap"))
 
+with result_col:
+    st.metric("Gap at the finish", f"{abs(lead):.3f} s")
+    if lead > 0:
+        st.caption(f"{selected_driver} ahead")
+    elif lead < 0:
+        st.caption(f"{rival_driver} ahead",
+        )
+    else:
+        st.caption("Equal")
