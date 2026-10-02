@@ -1,10 +1,12 @@
 import streamlit as st
 import pandas as pd
+import plotly.express as px
 
 from src.calibration import (find_session_sources, RACE_CODE, RACES, estimate_pit_loss, calibrate_tyre_degradation, build_degradation_model, 
-                             DRY_COMPOUNDS, TYRE_OFFSET, estimate_driver_pace_offset, FUEL_EFFECT)
+                             DRY_COMPOUNDS, TYRE_OFFSET, estimate_driver_pace_offset, FUEL_EFFECT, empirical_degradation_curve)
 from src.ui import race_selector, get_laps, show_sessions_status, format_time, strategy_bar_chart
 from src.strategy import simulate_strategy, generate_strategies
+from src.data import COMPOUND_COLORS
 
 st.title("Race Stategy Predictor")
 
@@ -115,6 +117,31 @@ window_table = pd.DataFrame([{
 st.subheader("Stint duration estimated from the race")
 st.dataframe(window_table, hide_index=True)
 
+st.subheader("Tyre wear curve")
+st.caption("This section is still under construction: the tyre cliff is not detected automatically. "
+           "Read on the curve the tyre age where the time lost starts to rise faster, and by how much, "
+           "then set those values with the cliff sliders in the sidebar.")
+
+include_practice = st.checkbox("Include practice sessions (noisy)", value=False)
+curve_laps_by_session = {RACE_CODE: race_laps}
+fuel_effect_by_session = {RACE_CODE: FUEL_EFFECT}
+if include_practice:
+    for code, laps in practice_laps.items():
+        curve_laps_by_session[code] = laps
+        fuel_effect_by_session[code] = 0.0
+
+curve = empirical_degradation_curve(curve_laps_by_session, fuel_effect_by_session,
+                                    min_stint_laps=6, min_stints_per_age=5)
+if curve.empty:
+    st.info("Not enough stints to draw the wear curve")
+else:
+    fig = px.line(curve, x="TyreLife", y="MedianTimeLost", color="Compound", 
+                  line_dash = "Session", markers=True,
+                  hover_data = ["Stints"],
+                  color_discrete_map=COMPOUND_COLORS,
+                  labels={"TyreLife": "Tyre age (laps)", "MedianTimeLost": "Time lost vs start of stint (s)", "Session": "Session", "Stints": "Indipendent stints"})
+    st.plotly_chart(fig)
+
 driver_offsets = estimate_driver_pace_offset(race_laps, base_pace, compound_params, FUEL_EFFECT)
 if driver_offsets.empty: 
     st.warning("No clean laps available to estimate driver pace")
@@ -151,8 +178,14 @@ strategies = [
 
 
 best_by_sequence = {}
-knee_ages = {compound: int(compound_limits[compound]) for compound in compound_limits.index}
-cliff_slope = st.sidebar.slider("Extra wear beyond the typical stint (s/lap per lap)", 0.0, 0.3, 0.1, 0.01)
+st.sidebar.header("Tyre cliff")
+knee_ages = {}
+for compound in DRY_COMPOUNDS:
+    typical = int(compound_limits[compound]) if compound in compound_limits.index else 15
+    typical = max(5, min(typical, total_laps))
+    knee_ages[compound] = st.sidebar.slider(f"{compound.title()} cliff age (laps)", 5, total_laps, typical, 1)
+
+cliff_slope = st.sidebar.slider("Extra wear after the cliff (s/lap per lap)", 0.0, 0.3, 0.0, 0.01)
 
 for strategy in strategies: 
     lap_times = simulate_strategy(

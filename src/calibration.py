@@ -271,8 +271,97 @@ def calibrate_tyre_degradation(laps_by_session: dict, fuel_effect: float = FUEL_
     
     print(stint_results.groupby("Compound").size())
     return calibration
+  
+def empirical_degradation_curve(laps_by_session: dict[str, pd.DataFrame], fuel_effect_by_session: dict[str, float] | None = None, 
+                                min_stint_laps : int= 6, min_stints_per_age : int = 5, max_lap_ratio: float = 1.15) -> pd.DataFrame:
+    """Median time lost compared to the start of the stint, for every compound and tyre age.
+    Slow laps are kept on purpose: they may be caused by the tyre cliff."""
     
+    columns = [
+        "Session",
+        "Compound",
+        "TyreLife",
+        "MedianTimeLost",
+        "Stints",
+    ]
 
+    fuel_effect_by_session = fuel_effect_by_session or {}
+    pieces = []
+    
+    for session, session_laps in laps_by_session.items():
+        if session_laps is None or session_laps.empty:
+            continue
+
+        laps = session_laps.copy()
+        
+        required_columns = {
+            "Compound",
+            "LapTime",
+            "TyreLife",
+            "PitInTime",
+            "PitOutTime",
+            "TrackStatus",
+            "LapNumber",
+            "Driver",
+            "Stint",
+        }
+        missing_columns = required_columns - set(laps.columns)
+
+        if missing_columns:
+            raise ValueError(
+                f"Session {session} is missing columns: "
+                f"{sorted(missing_columns)}"
+            )
+    
+        valid = (laps["Compound"].isin(DRY_COMPOUNDS)
+                & laps["LapTime"].notna() & laps["TyreLife"].notna()
+                & laps["PitInTime"].isna() & laps["PitOutTime"].isna()
+                & (laps["TrackStatus"] == "1")
+                & (laps["LapNumber"] > 1))
+        
+        laps = laps[valid].copy()
+        
+        if "Deleted" in laps.columns: 
+            laps = laps[~laps["Deleted"].fillna(False).astype(bool)].copy()
+            
+        if laps.empty:
+            continue
+            
+        laps["LapTimeSec"] = laps["LapTime"].dt.total_seconds()
+        driver_median = laps.groupby("Driver")["LapTimeSec"].transform("median")
+        laps = laps[laps["LapTimeSec"] <= max_lap_ratio * driver_median].copy()
+        
+        fuel_effect = fuel_effect_by_session.get(session, 0.0)
+        laps["LapTimeCorrect"] = (laps["LapTimeSec"] + fuel_effect * laps["LapNumber"])
+        
+        for (driver, stint), stint_laps in laps.groupby(["Driver", "Stint"]):
+            stint_laps = stint_laps.sort_values(["TyreLife", "LapNumber"]).copy()
+            
+            if len(stint_laps) < min_stint_laps:
+                continue
+            if stint_laps["TyreLife"].nunique() < 3: 
+                continue
+            
+            reference = stint_laps["LapTimeCorrect"].iloc[:3].median()
+            stint_laps["TimeLost"] = stint_laps["LapTimeCorrect"] - reference
+            stint_laps["StintKey"] = f"{session}-{driver}-{stint}"
+            stint_laps["Session"] = session
+            
+            pieces.append(stint_laps[["Session", "StintKey","Compound", "TyreLife", "TimeLost"]])
+            
+    if not pieces: 
+        return pd.DataFrame(columns=["Session", "StintKey","Compound", "TyreLife", "MedianTimeLost", "Stints"])
+        
+    all_laps = pd.concat(pieces, ignore_index= True)
+    all_laps["TyreLife"] = all_laps["TyreLife"].astype(int)
+        
+    curve = (all_laps.groupby(["Session", "Compound", "TyreLife"])
+             .agg(MedianTimeLost = ("TimeLost", "median"), Stints = ("StintKey", "nunique"))
+             .reset_index())
+    
+    curve = curve[curve["Stints"] >= min_stints_per_age]   
+    return curve[columns].reset_index(drop=True)
+    
 def build_degradation_model(practice: pd.DataFrame, race: pd.DataFrame)-> pd.DataFrame:
     """One degradation value per compound: race value if it has enough laps,
     otherwise practice value. Degradation is never below zero."""
