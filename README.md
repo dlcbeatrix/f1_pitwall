@@ -157,6 +157,7 @@ For Suzuka 2026, the simulated race time was 83:31.431, compared with the offici
 
 ![Driver Comparison](docs/strategy6.png)
 <p align="center"><sub>Fig. 17: Simulated lap-by-lap gap between two drivers.</sub></p>
+
 ---
 ## 🔮 Future Developments
 * **Race Strategy Predictor — next steps:** pit stops under Safety Car / Virtual Safety Car, undercut/overcut analyzer, strategy-vs-strategy matrix, Monte Carlo simulation, backtest on a race not used in the calibration.
