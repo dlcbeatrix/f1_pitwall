@@ -1,17 +1,35 @@
 import streamlit as st
 
-from src.data import (enable_cache)
+from src.data import enable_cache
 
-st.set_page_config(page_title='F1 Pit Wall', layout= 'wide', page_icon=":material/sports_score:", initial_sidebar_state= "expanded")
+st.set_page_config(
+    page_title="F1 Pit Wall",
+    layout="wide",
+    page_icon=":material/sports_score:",
+    initial_sidebar_state="collapsed",
+)
 enable_cache()
 
-home_page = st.Page("views/home.py", title = "Home", icon = ":material/home:")
-tyre_deg_page = st.Page("views/tyre_degradation.py", title="Tyre Degradation", icon=":material/tire_repair:")
-noisy_page = st.Page("views/noisy_radio.py", title="The Noisy Radio", icon=":material/settings_input_antenna:")
-quali_gap_page =st.Page("views/quali_gap.py", title="Qualifying Gap", icon=":material/timer:")
-race_strategy_page = st.Page("views/race_strategy.py", title="Race Strategy Predictor", icon=":material/strategy:")
+home_page = st.Page("views/home.py", title="Home", icon=":material/home:")
+tyre_deg_page = st.Page(
+    "views/tyre_degradation.py", title="Tyre Degradation", icon=":material/tire_repair:"
+)
+quali_gap_page = st.Page(
+    "views/quali_gap.py", title="Qualifying Gap", icon=":material/timer:"
+)
+noisy_page = st.Page(
+    "views/noisy_radio.py",
+    title="The Noisy Radio",
+    icon=":material/settings_input_antenna:",
+)
+race_strategy_page = st.Page(
+    "views/race_strategy.py",
+    title="Race Strategy Predictor",
+    icon=":material/strategy:",
+)
 
-pg = st.navigation([home_page, tyre_deg_page, noisy_page, quali_gap_page, race_strategy_page])
+pg = st.navigation(
+    [home_page, tyre_deg_page, quali_gap_page, noisy_page, race_strategy_page],
+    position="top",
+)
 pg.run()
-
-

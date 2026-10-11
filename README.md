@@ -96,14 +96,15 @@ Where $\Delta$ is the quantization step.
 
 ### 4. 🎯 Race Strategy Predictor (work in progress)
 
-For four reference circuits (Hungaroring, Spa-Francorchamps, Suzuka and Marina Bay), the module estimates race strategies under green-flag conditions and compares two drivers lap by lap. It uses real FastF1 lap data; assumptions that cannot be estimated reliably from public data are exposed as sliders.
+For five reference circuits (Hungaroring, Spa-Francorchamps, Suzuka, Marina Bay and MadRing), the module estimates race strategies under green-flag conditions, compares two drivers lap by lap and backtests the simulation against the real race. It uses real FastF1 lap data; assumptions that cannot be estimated reliably from public data are exposed as sliders.
 
-- Selects the latest available race and practice sessions for each circuit, and shows which sessions are used.
+- Selects the latest available race and practice sessions for each circuit, states which data are used and warns (with a download button) when a session is missing.
 - Estimates green-flag pit stop loss as the median of valid stops, and displays valid and excluded stops.
-- Estimates tyre degradation by compound, using race data when available and practice data as a fallback.
-- Estimates a preliminary pace offset for each driver.
-- Generates 1-stop and 2-stop strategies using at least two compounds. For each set of compounds, it keeps the fastest stint split and displays the result with a tyre-coloured bar chart.
-- Compares two drivers using a selected strategy for each.
+- **Estimates the pit stop loss under VSC/SC** from the stops that were really made under neutralisation, by comparing the two laps of each stop with the same laps of the drivers who stayed out.
+- Estimates tyre degradation by compound, using race data when available and practice data as a fallback.The user chooses which laps are used (all compounds or a single compound) and the statistic (median or mean).
+- Generates 1-stop and 2-stop strategies using at least two compounds, and ranks them **with the pace of the selected driver**. For each set of compounds, it keeps the fastest stint split and displays the result with a tyre-coloured bar chart.
+- Head-to-head comparison between two drivers, with ranked strategies or **custom strategies** (compound and pit lap chosen by the user, to replay a real race), a **separate pit loss for each driver**, an optional **VSC/SC window with a reduced pit loss**, and the possibility to start the comparison from any lap with a given gap.
+- **Backtest:** the simulated gap is overlaid on the real on-track gap, computed from the lap timestamps.
 
 #### 📐 Formulas
 
@@ -111,11 +112,21 @@ For four reference circuits (Hungaroring, Spa-Francorchamps, Suzuka and Marina B
 
 $$t_{\mathrm{lap}} = t_{\mathrm{base}} + \Delta_{\mathrm{compound}} + d \cdot a - k \cdot n$$
 
-**Pit stop loss**, calculated for each valid green-flag stop and summarized as the median:
+**Driver pace offset.** Each clean lap is compared with the model, and the residuals are summarised per driver (median or mean) and referred to the median driver of the field:
+
+$$r = t_{\mathrm{corrected}} - \left(t_{\mathrm{base}} + \Delta_{\mathrm{compound}} + d \cdot a\right) \qquad o_{\mathrm{driver}} = \mathrm{stat}(r_{\mathrm{driver}}) - \mathrm{median}_{\mathrm{field}}\big(\mathrm{stat}(r)\big)$$
+
+**Pit stop loss under green flag**, calculated for each valid green-flag stop and summarized as the median:
 
 $$L_{\mathrm{pit}} = t_{\mathrm{in-lap}} + t_{\mathrm{out-lap}} - 2\tilde{t}_{\mathrm{clean}}$$
 
 where $\tilde{t}_{\mathrm{clean}}$ is the median clean lap time for that driver.
+
+**Pit stop loss under VSC/SC.** Under neutralisation every lap is slow, so the reference is the set of drivers who stayed out in the same two laps:
+
+$$L_{\mathrm{VSC}} = \left(t_{\mathrm{in}} + t_{\mathrm{out}}\right) - \sum_{n \in \{n_{\mathrm{in}},\, n_{\mathrm{out}}\}} \tilde{t}_{\mathrm{stayed\ out},\, n}$$
+
+Only stops whose in-lap ends under Safety Car, VSC or VSC ending (track status 4, 6 or 7) are counted.
 
 **Gap between drivers**, calculated lap by lap:
 
@@ -123,44 +134,67 @@ $$g_n = g_{n-1} + (t_{\mathrm{rival},n} - t_{\mathrm{driver},n})$$
 
 A positive gap means the selected driver is ahead; a negative gap means the rival is ahead.
 
-#### ✅ Example comparison
+In the VSC/SC scenario, a stop whose in-lap falls in the chosen window pays the reduced VSC/SC pit loss instead of the green-flag one. Lap times themselves are not slowed down.
 
-For Suzuka 2026, the simulated race time was 83:31.431, compared with the official winner's time of 1:28:03.403. This is an indicative comparison, not a direct validation: the simulation assumes green-flag running and does not reproduce all race conditions.
+#### 🔬 Backtest: 2026 Spanish GP (MadRing)
+
+**The race.** 57 laps, no red flag. Official result: ANT 1:34:23.754, VER +4.351 s, NOR +5.089 s. A Virtual Safety Car (track status 6 and 7) was deployed around lap 14. ANT and VER pitted at lap 14 under the VSC. NOR, the race leader, pitted at lap 15 after the VSC had ended and rejoined in P5. For the simulated race time, the best green-flag strategy for ANT (Medium → Hard, pit at lap 17) is within a few seconds of the official time (indicative only).
+
+**Pit stop loss.** About 25.9 s under green flag (14 stops) against about 11 s under VSC (median of the stops under neutralisation). Most front-runners lost only 5–7 s (VER 5.2 s, RUS 5.5 s, ANT 6.7 s), so stopping under the VSC saved roughly 20 s compared with NOR's stop.
+
+**Head-to-head NOR vs VER** (replay of the real strategies: NOR Medium → Hard, pit at lap 15; VER Soft → Hard, pit at lap 14; comparison starting at lap 5 with the real gap of 7.6 s; real final gap: VER ahead by about 0.7 s):
+
+| Model | Final gap (NOR lead) | Error vs real |
+|---|---|---|
+| Green flag only, pace offsets from all laps (median) | +19.3 s | ≈ 20 s |
+| + offsets from Hard laps (mean) and VSC window with the median VSC pit loss (10.95 s) | +11.6 s | ≈ 12 s |
+| + measured VSC pit loss (5.2 s) and NOR's real pit loss (28.4 s) | +3.3 s | ≈ 4 s |
+
+**What the backtest shows**
+- With the VSC modelled, the pit stops are reproduced well: the swing caused by VER's stop is +6.8 s simulated against +5.7 s real, and NOR's stop costs about 27.7 s simulated against 27.5 s real.
+- The second stint, when both drivers are on Hard tyres, is reproduced almost exactly: NOR gains 9.1 s on VER in the simulation and 8.6 s in the real race (about 0.22 s/lap).
+- Most of the remaining error (about 2.7 s of the 4 s) comes from the first stint (laps 5–13). In the real race NOR's gain per lap decreases from 1.1 s to 0.3 s while the model's increases from 0.4 s to 1.5 s: VER was stuck in traffic after giving back a position at lap 4, and the model has no traffic. The soft-tyre degradation (+0.177 s/lap), calibrated on practice sessions, is probably overestimated as well.
+- Pace offsets computed on Hard-stint laps with the mean reproduce the real second-stint gaps much better than offsets computed on all laps with the median, which is why the page lets the user choose both.
+
+**Caveat.** This is not an independent validation: the VSC pit loss and NOR's pit loss were measured on this same race. The real gap is the on-track gap from lap timestamps, so time penalties in the official classification are not included. A second race with a neutralisation is needed to test the method.
+Only one driver pair (NOR vs VER) has been backtested so far.
 
 #### ⚠️ Known Limitations
 
-- **Green-flag model:** Safety Cars, Virtual Safety Cars, red flags and rain are not simulated yet.
-- **No traffic or overtaking model:** the selected starting position and gap set the initial conditions; the simulation does not model cars physically defending or passing each other.
-- **Preliminary driver pace offsets:** offsets are estimated from observed race laps after tyre and fuel corrections. They may also reflect car performance, tyre choice, setup, traffic and race conditions, so they are not a pure measure of driver ability.
-- **Simplified driver comparison:** both drivers are simulated under green-flag conditions using the selected strategies and initial gap.
+- **Neutralisations are a pit-loss scenario only:** a single VSC/SC window with one pit loss value. Lap times are not slowed down, gaps are not compressed, and Safety Car queues and restarts are not simulated. Red flags and rain are not simulated either.
+- **No traffic or overtaking model:** the selected starting position and gap set the initial conditions; the simulation does not model cars physically defending or passing each other. At Madrid this is the main source of the remaining error.
+- **Preliminary driver pace offsets:** offsets are estimated from observed race laps after tyre and fuel corrections. They may also reflect car performance, tyre choice, setup, traffic and race conditions, so they are not a pure measure of driver ability. The best laps and statistic to use can change from race to race.
 - **Tyre cliff is manual:** the page shows an empirical wear curve, but does not detect the cliff automatically. The user can set what-if cliff parameters with the sidebar sliders.
 - **Compound pace offsets** come from public Pirelli/F1 sources and are assumptions, not measurements.
 - **Compound labels:** Soft, Medium and Hard refer to the weekend's assigned compounds, which can change between events and seasons.
-- **Practice data:** practice laps can be affected by track evolution and different fuel loads, so they are used as a fallback.
-- **Small samples:** some compounds have few stints, and the pit loss may rely on a limited number of green-flag stops.
+- **Practice data:** practice laps can be affected by track evolution and different fuel loads, so they are used as a fallback. At Madrid the soft degradation comes from practice and is likely too high.
+- **Small samples:** some compounds have few stints, and the pit loss may rely on a limited number of stops.
 - **Cross-season data:** when practice and race data come from different seasons, regulation changes may affect comparability.
 
 ![Race Strategy Page](docs/strategy1.png)
-<p align="center"><sub>Fig. 12: Suzuka race strategy predictor.</sub></p>
-
-![Degradation Data](docs/strategy2.png)
-<p align="center"><sub>Fig. 13: Estimated degradation and stint duration.</sub></p>
+<p align="center"><sub>Fig. 12: MadRing race strategy predictor: ranked strategies for the selected driver and tyre stint chart.</sub></p>
 
 ![Sidebar Assumptions](docs/strategy3.png)
-<p align="center"><sub>Fig. 14: Compound assumptions in the sidebar.</sub></p>
+<p align="center"><sub>Fig. 13: Model assumptions in the sidebar: tyre parameters, pace offset method, stint limits and tyre cliff.</sub></p>
 
 ![Tyre Wear Curve](docs/strategy4.png)
-<p align="center"><sub>Fig. 15: Empirical tyre wear curve used to inspect potential cliff behaviour.</sub></p>
+<p align="center"><sub>Fig. 14: Empirical tyre wear curve used to inspect potential cliff behaviour.</sub></p>
 
-![Strategy Table and Stint Chart](docs/strategy5.png)
-<p align="center"><sub>Fig. 16: Ranked strategies and tyre stint chart.</sub></p>
+![Backtest without VSC](docs/strategy5.png)
+<p align="center"><sub>Fig. 15: Backtest NOR vs VER with the green-flag model only: the simulation misses the VSC and the final gap is off by about 20 s.</sub></p>
 
-![Driver Comparison](docs/strategy6.png)
-<p align="center"><sub>Fig. 17: Simulated lap-by-lap gap between two drivers.</sub></p>
+![Backtest with VSC](docs/strategy6.png)
+<p align="center"><sub>Fig. 16: Backtest NOR vs VER with the VSC window and measured pit losses: the final gap is off by about 4 s.</sub></p>
 
 ---
 ## 🔮 Future Developments
-* **Race Strategy Predictor — next steps:** pit stops under Safety Car / Virtual Safety Car, undercut/overcut analyzer, strategy-vs-strategy matrix, Monte Carlo simulation, backtest on a race not used in the calibration.
+* **Race Strategy Predictor — next steps:** 
+   * a traffic and overtaking model (the main source of the remaining Madrid error);
+  * lap-time slowdown and gap compression under VSC/SC, and random neutralisations in a Monte Carlo simulation;
+  * backtest on a second race with a neutralisation, with a table of errors for several driver pairs;
+  * undercut/overcut analyzer and strategy-vs-strategy matrix.
+
+**Telemetry comparison:** speed, throttle, brake and rpm traces for one driver in a session, and a driver-vs-driver comparison with the time delta; a track map coloured by the faster driver and animated driver positions.
 
 * **Noisy Radio — Level B:** compare bandpass PAM and QAM constellations, plot simulated vs. theoretical SER curves, and derive the required $E_b/N_0$ for a target SER to compare spectral and energy efficiency across modulation schemes.
 
@@ -179,34 +213,35 @@ For Suzuka 2026, the simulated race time was 83:31.431, compared with the offici
 ## 🚀 How to Run Locally
 
 1. Clone this repository:
+
    ```bash
    git clone https://github.com/dlcbeatrix/f1_pitwall.git
    cd f1_pitwall
+   ```
+
 2. Create and activate a virtual environment:
 
    ```bash
-
    python -m venv venv
-
    venv\Scripts\activate
+   ```
 
 3. Install the dependencies:
 
    ```bash
-
    pip install -r requirements.txt
+   ```
 
-4. Run the Streamlit app: 
+4. Run the Streamlit app:
 
-    ```bash
+   ```bash
+   streamlit run app.py
+   ```
 
-    streamlit run app.py
-
-
+> **Note:** the saved race files now include the lap timestamps and positions needed by the backtest. If you downloaded sessions with an older version, delete the files in `data/laps` so that they are downloaded again.
 
 ---
 
 ## 👤 Author
 
 Developed by **dlcbeatrix**, Beatrice De Luca, *Computer Engineering Student*. 
-

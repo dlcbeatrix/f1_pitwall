@@ -17,6 +17,7 @@ COLUMNS = [
     "Driver", "DriverNumber", "Team", "LapNumber", "LapTime", "Stint",
     "Compound", "TyreLife", "PitInTime", "PitOutTime",
     "Sector1Time", "Sector2Time", "Sector3Time", "TrackStatus", "Deleted",
+    "Time", "Position",
 ]
 
 SESSION_CODES = {

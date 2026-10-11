@@ -2,7 +2,8 @@ from src.calibration import FUEL_EFFECT
 from itertools import product
 
 def simulate_strategy(strategy: list, base_pace: float, compound_params: dict, pit_loss: float, fuel_effect: float = FUEL_EFFECT,
-                      knee_ages: dict | None = None, cliff_slope: float = 0.0)->list:
+                      knee_ages: dict | None = None, cliff_slope: float = 0.0,
+                      neutral_laps: tuple | None = None, neutral_pit_loss : float | None = None)->list:
     """Lap times (seconds) of a strategy.
     Strategy = list of compound and number of laps, e.g. [("SOFT", 15), ("HARD", 33)]"""
     
@@ -27,7 +28,12 @@ def simulate_strategy(strategy: list, base_pace: float, compound_params: dict, p
         
         is_last_stint = stint_index == len(strategy)-1
         if not is_last_stint: 
-            lap_times[-1] += pit_loss
+            under_neutral = (neutral_laps is not None and neutral_pit_loss is not None
+                             and neutral_laps[0] <= lap_number <=neutral_laps[1])
+            if under_neutral: 
+                 lap_times[-1] += neutral_pit_loss
+            else:
+                lap_times[-1] += pit_loss
     return lap_times
 
 def generate_sequences(compounds: list, max_stops: int = 2)->list: 

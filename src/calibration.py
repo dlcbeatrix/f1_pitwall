@@ -12,13 +12,15 @@ RACES = {
     "Spa-Francorchamps": "Belgian Grand Prix",
     "Suzuka": "Japanese Grand Prix",
     "Marina Bay (Singapore)": "Singapore Grand Prix",
+    "MadRing (Madrid)": "Spanish Grand Prix",
 }
 
 TYRE_OFFSET = {
     "Hungaroring": {"SOFT": -0.45, "MEDIUM": 0.0, "HARD": 0.55},
-    "Suzuka": {"SOFT": -0.5,"MEDIUM": 0.0, "HARD": 0.45},
-    "Spa-Francorchamps": {"SOFT": -0.45,"MEDIUM": 0.0, "HARD": 0.5},
-    "Marina Bay (Singapore)":{"SOFT": -0.45,"MEDIUM": 0.0, "HARD": 0.55}
+    "Suzuka": {"SOFT": -0.5, "MEDIUM": 0.0, "HARD": 0.45},
+    "Spa-Francorchamps": {"SOFT": -0.45, "MEDIUM": 0.0, "HARD": 0.5},
+    "Marina Bay (Singapore)": {"SOFT": -0.45, "MEDIUM": 0.0, "HARD": 0.55},
+    "MadRing (Madrid)": {"SOFT": -0.75, "MEDIUM": 0.0, "HARD": 0.75},
 }
 
 RACE_CODE = "R"
@@ -29,170 +31,204 @@ MIN_RACE_LAPS = 100
 
 FUEL_EFFECT = 0.05
 
+
 @dataclass
-class SessionSources: 
+class SessionSources:
     practice_year: int | None
     practice_round: int | None
     practice_sessions: list[str]
     race_year: int | None
     race_round: int | None
-    
-def finished_sessions(event)-> list: 
+
+
+def finished_sessions(event) -> list:
     """Codes of the sessions of an event that have already taken place"""
     now = pd.Timestamp.now("UTC").tz_localize(None)
     done = []
-    for i in range (1, 6):
+    for i in range(1, 6):
         code = SESSION_CODES.get(event.get(f"Session{i}"))
         start = event.get(f"Session{i}DateUtc")
-        if code and pd.notna(start) and start + pd.Timedelta(hours = 3) < now: 
+        if code and pd.notna(start) and start + pd.Timedelta(hours=3) < now:
             done.append(code)
     return done
 
-    
-def find_session_sources(event_name: str)-> SessionSources:
+
+def find_session_sources(event_name: str) -> SessionSources:
     """Find the latest availabe practice session and race for a target GP"""
     practice_year, practice_round, practice_sessions = None, None, []
     race_year, race_round = None, None
-    
-    for year in range (datetime.now().year, 2017, -1):
+
+    for year in range(datetime.now().year, 2017, -1):
         schedule = get_schedule(year)
-        if schedule is None: 
+        if schedule is None:
             continue
-        matches = schedule[schedule["EventName"]== event_name]
-        if matches.empty: 
+        matches = schedule[schedule["EventName"] == event_name]
+        if matches.empty:
             continue
-        
+
         event = matches.iloc[0]
         done = finished_sessions(event)
-        
+
         practice = [c for c in done if c in TYRE_SESSIONS and c != RACE_CODE]
-        if practice_year is None and practice: 
+        if practice_year is None and practice:
             practice_year = year
             practice_round = int(event["RoundNumber"])
             practice_sessions = practice
-            
-        if race_year is None and RACE_CODE in done: 
+
+        if race_year is None and RACE_CODE in done:
             race_year = year
             race_round = int(event["RoundNumber"])
-            
-        if practice_year is not None and race_year is not None: 
+
+        if practice_year is not None and race_year is not None:
             break
-    return SessionSources(practice_year, practice_round, practice_sessions, race_year, race_round)
+    return SessionSources(
+        practice_year, practice_round, practice_sessions, race_year, race_round
+    )
 
 
-def clean_laps_all_drivers(laps: pd.DataFrame, fuel_effect: float = FUEL_EFFECT, min_stint_laps: int = 1)-> pd.DataFrame:
+def clean_laps_all_drivers(
+    laps: pd.DataFrame, fuel_effect: float = FUEL_EFFECT, min_stint_laps: int = 1
+) -> pd.DataFrame:
     """Clean the laps for every driver and return them in a single table"""
     cleaned_laps = []
     for driver in laps["Driver"].unique():
         driver_laps = clean_laps(laps, driver, fuel_effect, min_stint_laps)
         cleaned_laps.append(driver_laps)
-    return pd.concat(cleaned_laps, ignore_index= True)
+    return pd.concat(cleaned_laps, ignore_index=True)
 
-def estimate_driver_pace_offset(race_laps: pd.DataFrame, base_pace: float, compound_params: dict, fuel_effect: float = FUEL_EFFECT, min_stint_laps: int = 3)->pd.DataFrame:
+
+def estimate_driver_pace_offset(
+    race_laps: pd.DataFrame,
+    base_pace: float,
+    compound_params: dict,
+    fuel_effect: float = FUEL_EFFECT,
+    min_stint_laps: int = 3,
+    only_compound: str | None = None,
+    statistic: str = "median",
+) -> pd.DataFrame:
     clean = clean_laps_all_drivers(race_laps, fuel_effect, min_stint_laps)
-    
+
     columns = ["Driver", "PaceOffset", "CleanLaps"]
-    
-    if clean.empty: 
-        return pd.DataFrame(columns= columns)
-    
-    valid_laps = clean["Compound"].isin(compound_params.keys()) & clean["TyreLife"].notna()
-    clean = clean[valid_laps].copy()
-    
-    if clean.empty: 
-            return pd.DataFrame(columns= columns)
-        
-    compound_offset = {compound: params["offset"] 
-                       for compound, params in compound_params.items()
-                       }
-    compound_degradation = { compound: params["degradation"]
-                            for compound, params in compound_params.items()
-                            }
-    
-    clean["ModelPace"] = (base_pace + clean["Compound"].map(compound_offset) + clean["Compound"].map(compound_degradation) * clean["TyreLife"])
-    clean["PaceResidual"] = clean["LapTimeCorrect"] - clean["ModelPace"]
-    
-    driver_paces = (clean.groupby("Driver").agg(
-        RawOffset = ("PaceResidual", "median"),
-        CleanLaps = ("PaceResidual", "count")
-        ).reset_index()
+
+    if clean.empty:
+        return pd.DataFrame(columns=columns)
+
+    valid_laps = (
+        clean["Compound"].isin(compound_params.keys()) & clean["TyreLife"].notna()
     )
-    
+    clean = clean[valid_laps].copy()
+
+    if clean.empty:
+        return pd.DataFrame(columns=columns)
+
+    compound_offset = {
+        compound: params["offset"] for compound, params in compound_params.items()
+    }
+    compound_degradation = {
+        compound: params["degradation"] for compound, params in compound_params.items()
+    }
+    if only_compound is not None:
+        clean = clean[clean["Compound"] == only_compound].copy()
+        if clean.empty:
+            return pd.DataFrame(columns=columns)
+
+    clean["ModelPace"] = (
+        base_pace
+        + clean["Compound"].map(compound_offset)
+        + clean["Compound"].map(compound_degradation) * clean["TyreLife"]
+    )
+    clean["PaceResidual"] = clean["LapTimeCorrect"] - clean["ModelPace"]
+
+    driver_paces = (
+        clean.groupby("Driver")
+        .agg(RawOffset=("PaceResidual", statistic), CleanLaps=("PaceResidual", "count"))
+        .reset_index()
+    )
+
     field_reference = driver_paces["RawOffset"].median()
-    
+
     driver_paces["PaceOffset"] = driver_paces["RawOffset"] - field_reference
-    
-    return (driver_paces[columns].sort_values("PaceOffset").reset_index(drop = True))
-    
-def estimate_pit_loss(race_laps: pd.DataFrame)-> tuple:
+
+    return driver_paces[columns].sort_values("PaceOffset").reset_index(drop=True)
+
+
+def estimate_pit_loss(race_laps: pd.DataFrame) -> tuple:
     """Estimate green-flag pit loss (in seconds) as the median over all stops in race laps"""
-    
+
     clean = clean_laps_all_drivers(race_laps)
     reference_pace = clean.groupby("Driver")["LapTimeSec"].median()
-    
-    green_laps = race_laps[race_laps["LapTime"].notna() & (race_laps["TrackStatus"] == "1")].copy()
+
+    green_laps = race_laps[
+        race_laps["LapTime"].notna() & (race_laps["TrackStatus"] == "1")
+    ].copy()
     green_laps["LapTimeSec"] = green_laps["LapTime"].dt.total_seconds()
-    
+
     pit_entries = green_laps[green_laps["PitInTime"].notna()]
-    print("Pit entries with lap time: ", (race_laps["PitInTime"].notna() & race_laps["LapTime"].notna()).sum())
+    print(
+        "Pit entries with lap time: ",
+        (race_laps["PitInTime"].notna() & race_laps["LapTime"].notna()).sum(),
+    )
     print("Pit entries with green flag: ", len(pit_entries))
-    
+
     losses = []
     transits = []
     skipped = []
     pit_details = []
-    
-    
-    for i in range (len(pit_entries)):
+
+    for i in range(len(pit_entries)):
         in_lap = pit_entries.iloc[i]
         driver = in_lap["Driver"]
         lap_number = in_lap["LapNumber"]
-        
-        if driver not in reference_pace.index: 
+
+        if driver not in reference_pace.index:
             skipped.append((driver, lap_number, "no reference pace"))
             continue
-        
+
         if pd.notna(in_lap["PitOutTime"]):
             skipped.append((driver, lap_number, "In-lap is also an out-lap"))
             continue
-        
-        next_laps = race_laps[(race_laps["Driver"]== driver) & (race_laps["LapNumber"] == lap_number+1)]
-        
+
+        next_laps = race_laps[
+            (race_laps["Driver"] == driver) & (race_laps["LapNumber"] == lap_number + 1)
+        ]
+
         if next_laps.empty:
             skipped.append((driver, lap_number, "Following lap missing"))
             continue
         out_lap_candidates = next_laps[next_laps["PitOutTime"].notna()]
-        if out_lap_candidates.empty: 
+        if out_lap_candidates.empty:
             skipped.append((driver, lap_number, "PitOutTime missing on next lap"))
             continue
         out_lap = out_lap_candidates.iloc[0]
-        
-        if out_lap["TrackStatus"] !="1":
+
+        if out_lap["TrackStatus"] != "1":
             skipped.append((driver, lap_number, "Exit lap not with a green flag"))
             continue
-        
+
         if pd.isna(out_lap["LapTime"]):
             skipped.append((driver, lap_number, "Lap time of exit lap missing"))
             continue
-        
+
         out_lap_time_sec = out_lap["LapTime"].total_seconds()
-        
+
         loss = in_lap["LapTimeSec"] + out_lap_time_sec - 2 * reference_pace[driver]
         losses.append(loss)
-        
+
         transit = (out_lap["PitOutTime"] - in_lap["PitInTime"]).total_seconds()
         transits.append(transit)
-        
-        pit_details.append({
-            "Driver": driver,
-            "Lap": lap_number,
-            "Loss": loss,
-            "Transit": transit,
-            })
-        
-    if len(losses) == 0: 
+
+        pit_details.append(
+            {
+                "Driver": driver,
+                "Lap": lap_number,
+                "Loss": loss,
+                "Transit": transit,
+            }
+        )
+
+    if len(losses) == 0:
         return float("nan"), pd.DataFrame(), pd.DataFrame()
-    
+
     print("Valid pit stops:")
     for stop in sorted(pit_details, key=lambda item: item["Loss"]):
         print(
@@ -200,18 +236,60 @@ def estimate_pit_loss(race_laps: pd.DataFrame)-> tuple:
             f"loss {stop['Loss']:.3f}s, "
             f"transit {stop['Transit']:.3f}s"
         )
-    
+
     print("Excluded pit stops: ", len(skipped))
-    for driver, lap_number, reason in skipped: 
+    for driver, lap_number, reason in skipped:
         print(f"Excluded: {driver}, lap {lap_number}: {reason}")
-    
+
     stops_table = pd.DataFrame(pit_details)
     skipped_table = pd.DataFrame(skipped, columns=["Driver", "Lap", "Reason"])
     return float(np.median(losses)), stops_table, skipped_table
-    
-def clean_sessions(laps_by_sessions: dict, fuel_effect: float = FUEL_EFFECT, min_stint_laps: int = 3)-> pd.DataFrame:
+
+
+def estimate_neutralised_pit_cost(race_laps: pd.DataFrame) -> pd.DataFrame:
+    """Seconds lost by every pit stop made under VSC/SC, compared with drivers who stayed out"""
+    laps = race_laps.copy()
+    laps["LapTimeSec"] = laps["LapTime"].dt.total_seconds()
+
+    under_neutral = laps["TrackStatus"].str[-1].isin(["4", "6", "7"])
+    stops = laps[laps["PitInTime"].notna() & under_neutral]
+
+    rows = []
+    for _, in_lap in stops.iterrows():
+        driver = in_lap["Driver"]
+        lap_number = in_lap["LapNumber"]
+
+        out_lap = laps[
+            (laps["Driver"] == driver) & (laps["LapNumber"] == lap_number + 1)
+        ]
+        if out_lap.empty:
+            continue
+
+        stopper_time = in_lap["LapTimeSec"] + out_lap.iloc[0]["LapTimeSec"]
+
+        two_laps = laps[laps["LapNumber"].isin([lap_number, lap_number + 1])]
+        stayed_out = two_laps[
+            two_laps["PitInTime"].isna() & two_laps["PitOutTime"].isna()
+        ]
+        others_time = stayed_out.groupby("LapNumber")["LapTimeSec"].median().sum()
+
+        rows.append(
+            {
+                "Driver": driver,
+                "InLap": lap_number,
+                "TrackStatus": in_lap["TrackStatus"],
+                "Cost": round(stopper_time - others_time, 1),
+            }
+        )
+
+    return pd.DataFrame(rows, columns=["Driver", "InLap", "TrackStatus", "Cost"])
+
+
+def clean_sessions(
+    laps_by_sessions: dict, fuel_effect: float = FUEL_EFFECT, min_stint_laps: int = 3
+) -> pd.DataFrame:
     """Clean every session on its own and put the results in one table"""
-    
+
     cleaned = []
     for code, laps in laps_by_sessions.items():
         session_laps = clean_laps_all_drivers(laps, fuel_effect, min_stint_laps)
@@ -219,64 +297,96 @@ def clean_sessions(laps_by_sessions: dict, fuel_effect: float = FUEL_EFFECT, min
         cleaned.append(session_laps)
     return pd.concat(cleaned, ignore_index=True)
 
-def calibrate_tyre_degradation(laps_by_session: dict, fuel_effect: float = FUEL_EFFECT, min_stint_laps = 3)->pd.DataFrame:
+
+def calibrate_tyre_degradation(
+    laps_by_session: dict, fuel_effect: float = FUEL_EFFECT, min_stint_laps=3
+) -> pd.DataFrame:
     """Estimate tyre pace and degradation from available practice sessions"""
-    
-    cleaned = clean_sessions(laps_by_session,fuel_effect, min_stint_laps)
+
+    cleaned = clean_sessions(laps_by_session, fuel_effect, min_stint_laps)
     cleaned = cleaned[cleaned["Compound"].isin(DRY_COMPOUNDS)]
-    
-    
-    if cleaned.empty: 
-        return pd.DataFrame(columns=["Compound", "Degradation", "Drivers", "Stints", "Laps", "BasePace"])
-    
+
+    if cleaned.empty:
+        return pd.DataFrame(
+            columns=["Compound", "Degradation", "Drivers", "Stints", "Laps", "BasePace"]
+        )
+
     required = {"Driver", "Session", "Stint", "Compound", "TyreLife", "LapTimeCorrect"}
     missing = required - set(cleaned.columns)
-    if missing: 
+    if missing:
         raise ValueError(f"Missing columns to estimate degradation: {sorted(missing)}")
-    
+
     stint_rows = []
-    
-    for (driver, session, stint), stint_laps in cleaned.groupby(["Driver","Session", "Stint"]):
-        stint_laps = stint_laps.dropna(subset=["TyreLife", "LapTimeCorrect", "Compound"])
-        
-        if len(stint_laps) < 2 or stint_laps["TyreLife"].nunique()<2: 
-            continue
-        
-        slope, intercept = np.polyfit(stint_laps["TyreLife"].astype(float), stint_laps["LapTimeCorrect"].astype(float), 1)
-        
-        stint_rows.append({
-            "Driver": driver, 
-            "Session": session,
-            "Stint": stint, 
-            "Compound": stint_laps["Compound"].iloc[0],
-            "BasePace": intercept,
-            "Degradation": slope,
-            "Laps": len(stint_laps)
-        })
-        
-    stint_results = pd.DataFrame(stint_rows)
-        
-    if stint_results.empty: 
-        return pd.DataFrame(columns=["Compound", "Degradation", "Drivers", "Stints", "Laps", "BasePace"])
-    
-    driver_result = (stint_results.groupby(["Driver", "Compound"],as_index= False).agg(
-        Degradation = ("Degradation", "median"), Stints = ("Stint", "count"), Laps=("Laps", "sum"), BasePace=("BasePace", "median")
+
+    for (driver, session, stint), stint_laps in cleaned.groupby(
+        ["Driver", "Session", "Stint"]
+    ):
+        stint_laps = stint_laps.dropna(
+            subset=["TyreLife", "LapTimeCorrect", "Compound"]
         )
+
+        if len(stint_laps) < 2 or stint_laps["TyreLife"].nunique() < 2:
+            continue
+
+        slope, intercept = np.polyfit(
+            stint_laps["TyreLife"].astype(float),
+            stint_laps["LapTimeCorrect"].astype(float),
+            1,
+        )
+
+        stint_rows.append(
+            {
+                "Driver": driver,
+                "Session": session,
+                "Stint": stint,
+                "Compound": stint_laps["Compound"].iloc[0],
+                "BasePace": intercept,
+                "Degradation": slope,
+                "Laps": len(stint_laps),
+            }
+        )
+
+    stint_results = pd.DataFrame(stint_rows)
+
+    if stint_results.empty:
+        return pd.DataFrame(
+            columns=["Compound", "Degradation", "Drivers", "Stints", "Laps", "BasePace"]
+        )
+
+    driver_result = stint_results.groupby(["Driver", "Compound"], as_index=False).agg(
+        Degradation=("Degradation", "median"),
+        Stints=("Stint", "count"),
+        Laps=("Laps", "sum"),
+        BasePace=("BasePace", "median"),
     )
-    
-    calibration = (driver_result.groupby("Compound", as_index= False).agg(
-        Degradation=("Degradation", "median"), Drivers=("Driver", "nunique"), Stints=("Stints", "sum"), Laps=("Laps", "sum"), BasePace=("BasePace", "median")
-        ).sort_values("Compound").reset_index(drop=True)
+
+    calibration = (
+        driver_result.groupby("Compound", as_index=False)
+        .agg(
+            Degradation=("Degradation", "median"),
+            Drivers=("Driver", "nunique"),
+            Stints=("Stints", "sum"),
+            Laps=("Laps", "sum"),
+            BasePace=("BasePace", "median"),
+        )
+        .sort_values("Compound")
+        .reset_index(drop=True)
     )
-    
+
     print(stint_results.groupby("Compound").size())
     return calibration
-  
-def empirical_degradation_curve(laps_by_session: dict[str, pd.DataFrame], fuel_effect_by_session: dict[str, float] | None = None, 
-                                min_stint_laps : int= 6, min_stints_per_age : int = 5, max_lap_ratio: float = 1.15) -> pd.DataFrame:
+
+
+def empirical_degradation_curve(
+    laps_by_session: dict[str, pd.DataFrame],
+    fuel_effect_by_session: dict[str, float] | None = None,
+    min_stint_laps: int = 6,
+    min_stints_per_age: int = 5,
+    max_lap_ratio: float = 1.15,
+) -> pd.DataFrame:
     """Median time lost compared to the start of the stint, for every compound and tyre age.
     Slow laps are kept on purpose: they may be caused by the tyre cliff."""
-    
+
     columns = [
         "Session",
         "Compound",
@@ -287,13 +397,13 @@ def empirical_degradation_curve(laps_by_session: dict[str, pd.DataFrame], fuel_e
 
     fuel_effect_by_session = fuel_effect_by_session or {}
     pieces = []
-    
+
     for session, session_laps in laps_by_session.items():
         if session_laps is None or session_laps.empty:
             continue
 
         laps = session_laps.copy()
-        
+
         required_columns = {
             "Compound",
             "LapTime",
@@ -309,75 +419,97 @@ def empirical_degradation_curve(laps_by_session: dict[str, pd.DataFrame], fuel_e
 
         if missing_columns:
             raise ValueError(
-                f"Session {session} is missing columns: "
-                f"{sorted(missing_columns)}"
+                f"Session {session} is missing columns: " f"{sorted(missing_columns)}"
             )
-    
-        valid = (laps["Compound"].isin(DRY_COMPOUNDS)
-                & laps["LapTime"].notna() & laps["TyreLife"].notna()
-                & laps["PitInTime"].isna() & laps["PitOutTime"].isna()
-                & (laps["TrackStatus"] == "1")
-                & (laps["LapNumber"] > 1))
-        
+
+        valid = (
+            laps["Compound"].isin(DRY_COMPOUNDS)
+            & laps["LapTime"].notna()
+            & laps["TyreLife"].notna()
+            & laps["PitInTime"].isna()
+            & laps["PitOutTime"].isna()
+            & (laps["TrackStatus"] == "1")
+            & (laps["LapNumber"] > 1)
+        )
+
         laps = laps[valid].copy()
-        
-        if "Deleted" in laps.columns: 
+
+        if "Deleted" in laps.columns:
             laps = laps[~laps["Deleted"].fillna(False).astype(bool)].copy()
-            
+
         if laps.empty:
             continue
-            
+
         laps["LapTimeSec"] = laps["LapTime"].dt.total_seconds()
         driver_median = laps.groupby("Driver")["LapTimeSec"].transform("median")
         laps = laps[laps["LapTimeSec"] <= max_lap_ratio * driver_median].copy()
-        
+
         fuel_effect = fuel_effect_by_session.get(session, 0.0)
-        laps["LapTimeCorrect"] = (laps["LapTimeSec"] + fuel_effect * laps["LapNumber"])
-        
+        laps["LapTimeCorrect"] = laps["LapTimeSec"] + fuel_effect * laps["LapNumber"]
+
         for (driver, stint), stint_laps in laps.groupby(["Driver", "Stint"]):
             stint_laps = stint_laps.sort_values(["TyreLife", "LapNumber"]).copy()
-            
+
             if len(stint_laps) < min_stint_laps:
                 continue
-            if stint_laps["TyreLife"].nunique() < 3: 
+            if stint_laps["TyreLife"].nunique() < 3:
                 continue
-            
+
             reference = stint_laps["LapTimeCorrect"].iloc[:3].median()
             stint_laps["TimeLost"] = stint_laps["LapTimeCorrect"] - reference
             stint_laps["StintKey"] = f"{session}-{driver}-{stint}"
             stint_laps["Session"] = session
-            
-            pieces.append(stint_laps[["Session", "StintKey","Compound", "TyreLife", "TimeLost"]])
-            
-    if not pieces: 
-        return pd.DataFrame(columns=["Session", "StintKey","Compound", "TyreLife", "MedianTimeLost", "Stints"])
-        
-    all_laps = pd.concat(pieces, ignore_index= True)
+
+            pieces.append(
+                stint_laps[["Session", "StintKey", "Compound", "TyreLife", "TimeLost"]]
+            )
+
+    if not pieces:
+        return pd.DataFrame(
+            columns=[
+                "Session",
+                "StintKey",
+                "Compound",
+                "TyreLife",
+                "MedianTimeLost",
+                "Stints",
+            ]
+        )
+
+    all_laps = pd.concat(pieces, ignore_index=True)
     all_laps["TyreLife"] = all_laps["TyreLife"].astype(int)
-        
-    curve = (all_laps.groupby(["Session", "Compound", "TyreLife"])
-             .agg(MedianTimeLost = ("TimeLost", "median"), Stints = ("StintKey", "nunique"))
-             .reset_index())
-    
-    curve = curve[curve["Stints"] >= min_stints_per_age]   
+
+    curve = (
+        all_laps.groupby(["Session", "Compound", "TyreLife"])
+        .agg(MedianTimeLost=("TimeLost", "median"), Stints=("StintKey", "nunique"))
+        .reset_index()
+    )
+
+    curve = curve[curve["Stints"] >= min_stints_per_age]
     return curve[columns].reset_index(drop=True)
-    
-def build_degradation_model(practice: pd.DataFrame, race: pd.DataFrame)-> pd.DataFrame:
+
+
+def build_degradation_model(practice: pd.DataFrame, race: pd.DataFrame) -> pd.DataFrame:
     """One degradation value per compound: race value if it has enough laps,
     otherwise practice value. Degradation is never below zero."""
     rows = []
     for compound in DRY_COMPOUNDS:
         in_race = race[race["Compound"] == compound]
         in_practice = practice[practice["Compound"] == compound]
-        
+
         if not in_race.empty and in_race["Laps"].iloc[0] >= MIN_RACE_LAPS:
             degradation = in_race["Degradation"].iloc[0]
-            source = 'race'
-        elif not in_practice.empty: 
+            source = "race"
+        elif not in_practice.empty:
             degradation = in_practice["Degradation"].iloc[0]
-            source = 'practice'
+            source = "practice"
         else:
             continue
-        rows.append({"Compound": compound, "Degradation": max(degradation, 0.0), "Source": source})
+        rows.append(
+            {
+                "Compound": compound,
+                "Degradation": max(degradation, 0.0),
+                "Source": source,
+            }
+        )
     return pd.DataFrame(rows)
-

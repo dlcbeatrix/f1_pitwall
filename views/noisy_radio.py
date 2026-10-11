@@ -3,47 +3,63 @@ import plotly.graph_objects as grob
 import streamlit as st
 import pandas as pd
 
-from src.data import (DEFAULT_COLOR, SESSION_CODES, SESSION_LABELS, team_color_map)
-from src.ui import (get_laps, get_speed, session_selector, format_time)
-from src.radio import (dequantize, quantize, from_bits, to_bits, map_pam, demap_pam, gray_pam_table,
-                       add_noise, decide_pam, theoretical_ser)
+from src.data import DEFAULT_COLOR, SESSION_CODES, SESSION_LABELS, team_color_map
+from src.ui import get_laps, get_speed, session_selector, format_time
+from src.radio import (
+    dequantize,
+    quantize,
+    from_bits,
+    to_bits,
+    map_pam,
+    demap_pam,
+    gray_pam_table,
+    add_noise,
+    decide_pam,
+    theoretical_ser,
+)
 
-st.title('The Noisy Radio')
-st.write('This module simulates how F1 telemetry travels from the car to the pit wall:'
-         ' sampling, quantization, radio noise and reconstruction using concepts from systems of digital communications on real data.')
+st.title("The Noisy Radio")
+st.write(
+    "This module simulates how F1 telemetry travels from the car to the pit wall:"
+    " sampling, quantization, radio noise and reconstruction using concepts from systems of digital communications on real data."
+)
 
 year, rnd, gp_name, code = session_selector(set(SESSION_CODES.values()))
 laps = get_laps(year, rnd, code)
 colors = team_color_map(laps)
 
-driver = st.sidebar.selectbox("Driver", sorted(laps["Driver"].unique()), index = None, placeholder = "Select a driver")
+driver = st.sidebar.selectbox(
+    "Driver", sorted(laps["Driver"].unique()), index=None, placeholder="Select a driver"
+)
 
-if driver is None: 
-    st.info('Select a driver in the sidebar')
+if driver is None:
+    st.info("Select a driver in the sidebar")
     st.stop()
-    
-#SIDEBAR 
-show_theory = st.sidebar.checkbox("Show theory notes", value = True)
+
+# SIDEBAR
+show_theory = st.sidebar.checkbox("Show theory notes", value=True)
 bits = st.sidebar.slider("Quantization bits", 2, 12, 8)
 k = st.sidebar.slider("Bits per symbol (k)", 1, 4, 2)
 ebn0_db = st.sidebar.slider("Eb/N0 (dB)", -5.0, 25.0, 10.0, 0.5)
 
 
 trace = get_speed(year, rnd, code, driver)
-t = trace["Time"].to_numpy() #time (s)
-x_t = trace["Speed"].to_numpy() #speed (km/h)
+t = trace["Time"].to_numpy()  # time (s)
+x_t = trace["Speed"].to_numpy()  # speed (km/h)
 
 team = laps[laps["Driver"] == driver]["Team"].iloc[0]
 team_color = colors.get(team, DEFAULT_COLOR)
 
-st.markdown(f"<h3 style='border-left: 8px solid {team_color}; padding-left: 12px'>"
+st.markdown(
+    f"<h3 style='border-left: 8px solid {team_color}; padding-left: 12px'>"
     f"{driver} · {team} · {gp_name} {year} - {SESSION_LABELS[code]} · fastest lap</h3>",
-    unsafe_allow_html=True,)
+    unsafe_allow_html=True,
+)
 
-#1. Sampling
+# 1. Sampling
 st.subheader("1. Sampling")
 
-if show_theory: 
+if show_theory:
     st.info("**Theory: signals and sampling**")
     st.markdown(r"""
     Here we take an analogue signal $x(t)$ (the real speed of the car) and turn it into a
@@ -58,16 +74,22 @@ if show_theory:
     > **Nyquist-Shannon theorem:** to avoid aliasing (losing information) we need
     > $f_s > 2B$, where $B$ is the bandwidth of the speed signal.
     """)
-    
+
 fig = grob.Figure()
-fig.add_trace(grob.Scatter(x=t, y = x_t, mode = 'lines', name =f"Speed {driver}",
-                           line = dict(color = team_color, width = 2)))
-fig.update_layout(xaxis_title = "Time (s)", yaxis_title = "Speed (km/h)", height = 600)
+fig.add_trace(
+    grob.Scatter(
+        x=t,
+        y=x_t,
+        mode="lines",
+        name=f"Speed {driver}",
+        line=dict(color=team_color, width=2),
+    )
+)
+fig.update_layout(xaxis_title="Time (s)", yaxis_title="Speed (km/h)", height=600)
 st.plotly_chart(fig)
 
 
-
-dt = np.diff(t)   # time between consecutive samples
+dt = np.diff(t)  # time between consecutive samples
 
 fs_real = len(x_t) / t[-1]
 
@@ -75,10 +97,12 @@ col1, col2, col3 = st.columns(3)
 col1.metric("Samples (N)", len(x_t))
 col2.metric("Lap duration (T)", f"{t[-1]:.3f} s = {format_time(t[-1])}")
 col3.metric("Average sampling rate (f_s)", f"{fs_real:.2f} Hz")
-st.caption(f"The interval between samples is not constant: from {dt.min() * 1000:.0f} ms "
-           f"to {dt.max() * 1000:.0f} ms.")
+st.caption(
+    f"The interval between samples is not constant: from {dt.min() * 1000:.0f} ms "
+    f"to {dt.max() * 1000:.0f} ms."
+)
 
-#2. Quantization
+# 2. Quantization
 st.subheader("2. Quantization")
 
 if show_theory:
@@ -111,8 +135,8 @@ if show_theory:
 q, x_min, x_max = quantize(x_t, bits)
 x_rec = dequantize(q, bits, x_min, x_max)
 
-step = (x_max-x_min)/(2**bits-1)
-mse = np.mean((x_t - x_rec)**2)
+step = (x_max - x_min) / (2**bits - 1)
+mse = np.mean((x_t - x_rec) ** 2)
 
 col1, col2, col3 = st.columns(3)
 col1.metric("Levels", 2**bits)
@@ -122,16 +146,27 @@ st.caption(f"Theory for a uniform quantizer: Δ²/12 = {step ** 2 / 12:.4f} (km/
 
 fig_q = grob.Figure()
 
-fig_q.add_trace(grob.Scatter(x=t, y=x_t, mode="lines", name="Original",
-                           line=dict(color="#00d26a", width=2)))
-fig_q.add_trace(grob.Scatter(x=t, y=x_rec, mode="lines", name="Quantized",
-                           line=dict(color="#ca00e1", width=2), opacity=0.5))
+fig_q.add_trace(
+    grob.Scatter(
+        x=t, y=x_t, mode="lines", name="Original", line=dict(color="#00d26a", width=2)
+    )
+)
+fig_q.add_trace(
+    grob.Scatter(
+        x=t,
+        y=x_rec,
+        mode="lines",
+        name="Quantized",
+        line=dict(color="#ca00e1", width=2),
+        opacity=0.5,
+    )
+)
 
 
-fig_q.update_layout(xaxis_title = "Time(s)", yaxis_title = "Speed (km/h)", height = 600)
+fig_q.update_layout(xaxis_title="Time(s)", yaxis_title="Speed (km/h)", height=600)
 st.plotly_chart(fig_q)
 
-#3. Bit Coding and PAM Mapping
+# 3. Bit Coding and PAM Mapping
 st.subheader("3. Bit coding and PAM mapping")
 
 if show_theory:
@@ -152,20 +187,22 @@ if show_theory:
     With **Gray mapping** neighbouring amplitudes differ by only one bit: when the noise
     makes the decision fall on a neighbouring amplitude (the most likely error), only one bit is wrong.
     """)
-    
+
 bit_stream = to_bits(q, bits)
 symbols, n_padding = map_pam(bit_stream, k)
 
-#No noise test
+# No noise test
 bits_back = demap_pam(symbols, k, n_padding)
 q_back = from_bits(bits_back, bits)
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Bits to send", len(bit_stream))
-col2.metric("Levels of the PAM (M)", 2 ** k)
+col2.metric("Levels of the PAM (M)", 2**k)
 col3.metric("Symbols", len(symbols))
 col4.metric("Bit errors (no noise)", int(np.sum(bit_stream != bits_back)))
-st.caption(f"Padding bits: {n_padding}. Levels recovered exactly: {np.array_equal(q, q_back)}")
+st.caption(
+    f"Padding bits: {n_padding}. Levels recovered exactly: {np.array_equal(q, q_back)}"
+)
 
 table = gray_pam_table(k)
 rows = []
@@ -174,9 +211,9 @@ for label in range(2**k):
 
 mapping = pd.DataFrame(rows).sort_values("Amplitude")
 st.write("Gray mapping table: ")
-st.dataframe(mapping, hide_index = True)
+st.dataframe(mapping, hide_index=True)
 
-#4. Noisy channel, decision and reconstruction
+# 4. Noisy channel, decision and reconstruction
 st.subheader("4. Noisy channel and reconstruction")
 
 if show_theory:
@@ -206,7 +243,7 @@ x_rx = dequantize(q_rx, bits, x_min, x_max)
 
 ser = np.mean(decided != symbols)
 ber = np.mean(bits_rx != bit_stream)
-mse_total = np.mean((x_t-x_rx)**2)
+mse_total = np.mean((x_t - x_rx) ** 2)
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("SER (simulated): ", f"{ser:.2e}")
@@ -214,12 +251,27 @@ col2.metric("BER (simulated):", f"{ber:.2e}")
 col3.metric("Final MSE", f"{mse_total:.3f} (km/h)^2")
 col4.metric("Final RMSE", f"{np.sqrt(mse_total):.2f} km/h")
 
-st.caption(f"Theoretical SER: {theoretical_ser(k, ebn0_db):.2e}. "
-           f"Symbols sent: {len(symbols)}, symbol errors: {int(np.sum(decided != symbols))}. "
-           f"MSE due to quantization alone: {mse:.4f} (km/h)^2")
+st.caption(
+    f"Theoretical SER: {theoretical_ser(k, ebn0_db):.2e}. "
+    f"Symbols sent: {len(symbols)}, symbol errors: {int(np.sum(decided != symbols))}. "
+    f"MSE due to quantization alone: {mse:.4f} (km/h)^2"
+)
 
 fig_r = grob.Figure()
-fig_r.add_trace(grob.Scatter(x = t, y = x_t, mode = 'lines', name = "Original", line = dict(color="#00d26a", width=2)))
-fig_r.add_trace(grob.Scatter(x = t, y = x_rx, mode = 'lines', name = 'Received',line=dict(color="#d900e1", width=2), opacity=0.5))
-fig_r.update_layout(xaxis_title = "Time(s)", yaxis_title = "Speed (km/h)", height = 600)
+fig_r.add_trace(
+    grob.Scatter(
+        x=t, y=x_t, mode="lines", name="Original", line=dict(color="#00d26a", width=2)
+    )
+)
+fig_r.add_trace(
+    grob.Scatter(
+        x=t,
+        y=x_rx,
+        mode="lines",
+        name="Received",
+        line=dict(color="#d900e1", width=2),
+        opacity=0.5,
+    )
+)
+fig_r.update_layout(xaxis_title="Time(s)", yaxis_title="Speed (km/h)", height=600)
 st.plotly_chart(fig_r)
