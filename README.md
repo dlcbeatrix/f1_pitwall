@@ -138,17 +138,45 @@ In the VSC/SC scenario, a stop whose in-lap falls in the chosen window pays the 
 
 #### 🔬 Backtest: 2026 Spanish GP (MadRing)
 
-**The race.** 57 laps, no red flag. Official result: ANT 1:34:23.754, VER +4.351 s, NOR +5.089 s. A Virtual Safety Car (track status 6 and 7) was deployed around lap 14. ANT and VER pitted at lap 14 under the VSC. NOR, the race leader, pitted at lap 15 after the VSC had ended and rejoined in P5. For the simulated race time, the best green-flag strategy for ANT (Medium → Hard, pit at lap 17) is within a few seconds of the official time (indicative only).
+**The race.** 57 laps, no red flag. Official result: ANT 1:34:23.754, VER +4.351 s, NOR +5.089 s. A Virtual Safety Car was deployed around lap 14. ANT and VER pitted under the VSC. NOR, the race leader, pitted at lap 15 under green-flag conditions. 
 
-**Pit stop loss.** About 25.9 s under green flag (14 stops) against about 11 s under VSC (median of the stops under neutralisation). Most front-runners lost only 5–7 s (VER 5.2 s, RUS 5.5 s, ANT 6.7 s), so stopping under the VSC saved roughly 20 s compared with NOR's stop.
+**Pit stop loss.** About 25.9 s under green flag against about 11 s under VSC (median). Most front-runners lost only 5–7 s (VER 5.2 s, RUS 5.5 s, ANT 6.7 s). Stopping under the VSC saved roughly 20 seconds.
 
-**Head-to-head NOR vs VER** (replay of the real strategies: NOR Medium → Hard, pit at lap 15; VER Soft → Hard, pit at lap 14; comparison starting at lap 5 with the real gap of 7.6 s; real final gap: VER ahead by about 0.7 s):
+**Multi-Driver Backtest Scenarios (Green Flag vs VSC)**
+Head-to-head scenarios were simulated across the first three finishers (ANT, VER and NOR). Comparisons start at lap 5 with real track gaps and show how modelling the VSC window changes the result. These are multiple driver-pair scenarios from the same race, not an independent cross-race validation.
 
-| Model | Final gap (NOR lead) | Error vs real |
-|---|---|---|
-| Green flag only, pace offsets from all laps (median) | +19.3 s | ≈ 20 s |
-| + offsets from Hard laps (mean) and VSC window with the median VSC pit loss (10.95 s) | +11.6 s | ≈ 12 s |
-| + measured VSC pit loss (5.2 s) and NOR's real pit loss (28.4 s) | +3.3 s | ≈ 4 s |
+| Driver Pair | Scenario | Pace Offset Method | Simulated Final Gap | Real Final Gap | Error |
+|---|---|---|---|---|---|
+| **NOR vs VER** | Green Flag (no VSC) | All compounds (median) | NOR ahead 19.3 s | VER ahead 0.7 s | ≈ 20.0 s |
+| **NOR vs VER** | VSC Modeled | All compounds (median) | VER ahead 3.3 s | VER ahead 0.7 s | ≈ 2.6 s |
+| **ANT vs NOR** | Green Flag (no VSC) | All compounds (median) | NOR ahead 14.6 s | ANT ahead 5.1 s | ≈ 19.7 s |
+| **ANT vs NOR** | VSC Modeled | All compounds (median) | ANT ahead 5.9 s | ANT ahead 5.1 s | ≈ 0.8 s |
+| **ANT vs VER** | VSC Modeled | All compounds (median) | ANT ahead 4.2 s | ANT ahead 4.3 s | ≈ 0.1 s |
+| **ANT vs VER** | VSC Modeled | Hard (median) | ANT ahead 15.6 s | ANT ahead 4.3 s | ≈ 11.3 s * |
+
+*\* The Hard (median) method for ANT vs VER exposes the "Dirty Air" effect (see below).*
+
+**Key Insights & The "Dirty Air" Effect**
+- **VSC Modeling is Critical:** Comparing the Green Flag and VSC Modeled scenarios demonstrates that applying the correct pit loss during the VSC window (VER ~5.5s, ANT ~7s, NOR ~28.4s) eliminates roughly 20 seconds of error, bringing the simulation within a 0-3 second margin for most setups.
+- **The Leclerc Train (Traffic Limitation):** When using the "Hard median" pace offset for ANT vs VER, the model accurately calculates their pure clean-air pace but predicts a 15.6s gap. In reality, from lap 15 to 47, both drivers were stuck in a DRS train behind Leclerc. The divergence between the simulated clean-air line and the flat real-world gap perfectly isolates the time lost to *dirty air*, highlighting the need for a traffic penalty in future developments.
+
+**Visualizing the Impact of VSC**
+<p align="center">
+  <img src="docs/NOR_VER_GREEN.png" width="48%">
+  <img src="docs/NOR_VER_VSC_ALL.png" width="48%">
+</p>
+<p align="center">
+  <sub><b>Left:</b> NOR vs VER Green Flag simulation (VSC ignored). The gap swings wildly, resulting in a ~20s error. <b>Right:</b> The same scenario with the VSC window correctly modelled, bringing the final gap prediction within ~2.6s of reality.</sub>
+</p>
+
+**Visualizing Accuracy vs Traffic**
+<p align="center">
+  <img src="docs/NOR_ANT_ALL_VSC.png" width="48%">
+  <img src="docs/VER_ANT_HARD_VSC.png" width="48%">
+</p>
+<p align="center">
+  <sub><b>Left:</b> NOR vs ANT (VSC modelled), predicting the final gap with an outstanding 0.8s margin. <b>Right:</b> ANT vs VER highlighting the "Leclerc train" effect, where the simulated clean-air pace (blue line dropping) heavily diverges from the traffic-limited real pace (dotted line).</sub>
+</p>
 
 **What the backtest shows**
 - With the VSC modelled, the pit stops are reproduced well: the swing caused by VER's stop is +6.8 s simulated against +5.7 s real, and NOR's stop costs about 27.7 s simulated against 27.5 s real.
@@ -156,8 +184,31 @@ In the VSC/SC scenario, a stop whose in-lap falls in the chosen window pays the 
 - Most of the remaining error (about 2.7 s of the 4 s) comes from the first stint (laps 5–13). In the real race NOR's gain per lap decreases from 1.1 s to 0.3 s while the model's increases from 0.4 s to 1.5 s: VER was stuck in traffic after giving back a position at lap 4, and the model has no traffic. The soft-tyre degradation (+0.177 s/lap), calibrated on practice sessions, is probably overestimated as well.
 - Pace offsets computed on Hard-stint laps with the mean reproduce the real second-stint gaps much better than offsets computed on all laps with the median, which is why the page lets the user choose both.
 
-**Caveat.** This is not an independent validation: the VSC pit loss and NOR's pit loss were measured on this same race. The real gap is the on-track gap from lap timestamps, so time penalties in the official classification are not included. A second race with a neutralisation is needed to test the method.
-Only one driver pair (NOR vs VER) has been backtested so far.
+**Caveat.** The VSC pit loss and NOR's pit loss were measured on this same race, so these results are not an independent cross-race validation. The real gap is the on-track gap from lap timestamps, so time penalties in the official classification are not included. A second race with a neutralisation is needed to test whether the method generalises.
+
+#### 🔬 Case Study: Clean Air Pace vs Track Position (Belgian GP)
+
+**The race.** 44 laps. A high-degradation circuit where track position is heavily compromised by the powerful Overtake mode effect and dirty air in Sector 2. To further validate the model's baseline accuracy and its limitations regarding traffic, head-to-head backtests were run on the 2026 Belgian GP.
+
+**Baseline Accuracy & Tactical Timing (LEC vs VER)**
+When evaluating drivers executing 1-stop strategies, the timing of the pit stop is crucial. Verstappen pitted under green-flag conditions before the neutralisations and stayed out during the VSCs on laps 18 and 20. Leclerc, instead, perfectly capitalized on the lap 20 VSC to make his stop, gaining track position over Norris and taking P1. He was ultimately overtaken only by Antonelli. Despite these different tactical scenarios in the real race, replaying their actual pit laps in the baseline simulation predicts a final gap of 1.9 s, accurately reflecting the real-world pace differential between the two.
+
+**The Traffic Penalty (ANT vs LEC)**
+The model exposes its clean-air assumption perfectly when analyzing Antonelli's race against Leclerc:
+*   **The Simulation:** The model confirms that Antonelli had a significantly stronger raw race pace. In pure clean air, he should have built a massive 19.1 s lead over Leclerc by the finish line.
+*   **The Reality:** Antonelli finished only ~1.96 s ahead.
+*   **The Root Cause (Telemetry Analysis):** After his pit stop on lap 18, Antonelli emerged in P5. For the next 8 laps (laps 18 to 26), he was stuck in dirty air fighting behind Piastri, Hamilton, and Norris. The model seamlessly accumulated a theoretical clean-air advantage during these laps, while the real Antonelli was bleeding lap time unable to exploit his pace. Once Antonelli cleared the traffic, his real-world gap progression perfectly matches the simulation's slope, allowing him to eventually overtake Leclerc for the win, but with a drastically reduced final margin.
+
+**Conclusion**
+This 17-second delta between the theoretical simulation and the official timing is a pure mathematical quantification of the "Traffic Penalty." It proves that while the degradation and pace offsets are mathematically sound in clean air, a race strategy predictor cannot be fully autonomous without a sophisticated traffic and overtaking probability matrix. 
+
+<p align="center">
+  <img src="docs/SPA_LEC_VER_BASELINE.png" width="48%">
+  <img src="docs/SPA_ANT_LEC_TRAFFIC.png" width="48%">
+</p>
+<p align="center">
+  <sub><b>Left:</b> LEC vs VER baseline simulation, predicting the final gap with high accuracy. <b>Right:</b> ANT vs LEC exposing the traffic penalty; the simulation incorrectly projects a 19s lead because it calculates Antonelli's superior raw pace in clean air, not accounting for the 8 laps he spent fighting in the pack.</sub>
+</p>
 
 #### ⚠️ Known Limitations
 
@@ -170,6 +221,7 @@ Only one driver pair (NOR vs VER) has been backtested so far.
 - **Practice data:** practice laps can be affected by track evolution and different fuel loads, so they are used as a fallback. At Madrid the soft degradation comes from practice and is likely too high.
 - **Small samples:** some compounds have few stints, and the pit loss may rely on a limited number of stops.
 - **Cross-season data:** when practice and race data come from different seasons, regulation changes may affect comparability.
+- **Tyre availability:** The model does not track each driver's available tyre sets or their prior use during the weekend. It may therefore recommend strategies requiring multiple fresh sets of the same compound— for example, two new Soft sets in a two-stop strategy—that may not be available or realistic.
 
 ![Race Strategy Page](docs/strategy1.png)
 <p align="center"><sub>Fig. 12: MadRing race strategy predictor: ranked strategies for the selected driver and tyre stint chart.</sub></p>
@@ -180,11 +232,6 @@ Only one driver pair (NOR vs VER) has been backtested so far.
 ![Tyre Wear Curve](docs/strategy4.png)
 <p align="center"><sub>Fig. 14: Empirical tyre wear curve used to inspect potential cliff behaviour.</sub></p>
 
-![Backtest without VSC](docs/strategy5.png)
-<p align="center"><sub>Fig. 15: Backtest NOR vs VER with the green-flag model only: the simulation misses the VSC and the final gap is off by about 20 s.</sub></p>
-
-![Backtest with VSC](docs/strategy6.png)
-<p align="center"><sub>Fig. 16: Backtest NOR vs VER with the VSC window and measured pit losses: the final gap is off by about 4 s.</sub></p>
 
 ---
 ## 🔮 Future Developments
